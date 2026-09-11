@@ -11,6 +11,8 @@ Diário técnico de extrações e calibração de cafés especiais. Aplicação 
 - **Curvas de sabor**: evolução das notas por grão × método, radar sensorial (última × melhor extração), tabela de tentativas e status de calibração (“calibrado em N tentativas”).
 - **Biblioteca nativa**: 15 terroirs brasileiros (Cerrado Mineiro, Sul de Minas, Mantiqueira, Matas de Minas, Chapada de Minas, Alta e Média Mogiana, Montanhas do ES, Conilon Capixaba, Chapada Diamantina, Planalto e Oeste da Bahia, Norte Pioneiro do Paraná, Caparaó, Matas de Rondônia), 7 processos de pós-colheita, 5 intensidades de torra (com Agtron e descanso), 11 métodos com parâmetros, e a tabela de indicações método × perfil.
 - **Moedores**: escala de cliques/sub-cliques, direção (menor = fino), referência por método; modelos prontos (Timemore, 1Zpresso, Comandante, Hario, Baratza Encore, Fellow Ode, DF64/Mignon).
+- **Receitas de despejo** por método (bloom, cada ataque com tempo e água acumulada, drenagem), escaladas para a dose e a razão da extração. No registro você anota o que realmente fez em cada despejo.
+- **Catálogo dos cafés comprados** já cadastrado em Grãos na primeira abertura: Maeda Coffee (Kit Inicial e Kit Exóticos), Encantos do Café (Kit Degustação: Agrado, Desejo, Raro, Sensação), Net Cafés (Caparaó: Caramelo & Chocolate, Frutas Amarelas, Frutas Vermelhas) e Colheita Café (Pra Beber de Balde, Halls de Cereja, Blend da Copa, Castanhas & Caramelo). Os moedores **Starseeker E55 Pro** e **Kingrinder K2** também vêm pré-cadastrados com referências de cliques por método.
 - **Backup** em JSON (exportar/importar/copiar). Os dados ficam apenas no aparelho.
 
 ## Como rodar

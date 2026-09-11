@@ -9,6 +9,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const KEY = 'cafelab.v1';
+  const BEAN = '<svg class="bean-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="8.5" cy="12.5" rx="4.6" ry="7" transform="rotate(-30 8.5 12.5)" fill="currentColor"/><path d="M6.2 6.9c2.4 1.9 2.6 4.4 1.3 6.5-1.2 2-1.4 3.6-.1 5.4" stroke="var(--surface)" stroke-width="1.3" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="10.5" rx="4.2" ry="6.4" transform="rotate(25 16 10.5)" fill="currentColor" opacity=".8"/><path d="M13.6 5.3c2.3 1.6 2.7 3.9 1.7 5.8-1 1.9-1 3.4.3 5" stroke="var(--surface)" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>';
 
   /* ---------------- Estado / armazenamento ---------------- */
   let state = load();
@@ -17,6 +18,23 @@
     return { graos: [], moedores: [], extracoes: [], config: { tema: 'auto', notaAlvo: 8 } };
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } }
+  /* Importa o catálogo nativo (cafés comprados) e os moedores do usuário sem duplicar */
+  function seedCatalogo(force) {
+    let n = 0, m = 0;
+    if (force || (state.config.catalogoVersao || 0) < DB.CATALOGO_VERSAO) {
+      DB.catalogo.forEach((c) => {
+        if (state.graos.some((g) => g.catalogoId === c.catalogoId)) return;
+        state.graos.push({ ...c, id: uid(), criadoEm: new Date().toISOString(), dataTorra: '' }); n++;
+      });
+      DB.moedoresModelo.filter((mm) => mm.id).forEach((mm) => {
+        if (state.moedores.some((x) => x.modeloId === mm.id)) return;
+        state.moedores.push({ id: uid(), modeloId: mm.id, nome: mm.nome, tipo: mm.tipo, min: mm.min, max: mm.max, passo: mm.passo, direcao: mm.direcao || 'menor=fino', refs: { ...mm.refs }, obs: mm.obs || '' }); m++;
+      });
+      state.config.catalogoVersao = DB.CATALOGO_VERSAO;
+      save();
+    }
+    return { graos: n, moedores: m };
+  }
   const grao = (id) => state.graos.find((g) => g.id === id);
   const moedor = (id) => state.moedores.find((m) => m.id === id);
   const extracao = (id) => state.extracoes.find((x) => x.id === id);
@@ -59,6 +77,19 @@
   function sel(name, opts, val, attrs) { return `<select name="${name}" ${attrs || ''}>${opts.map((o) => `<option value="${esc(o.id)}" ${o.id === val ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}</select>`; }
   function range(name, lbl, val, min, max, step) { return `<div class="range-row"><span class="lbl">${lbl}</span><input type="range" name="${name}" min="${min}" max="${max}" step="${step || 1}" value="${val}" oninput="this.nextElementSibling.value=this.value"><output>${val}</output></div>`; }
   function confirmar(msg) { return window.confirm(msg); }
+
+  /* ---------------- Receita / despejos ---------------- */
+  function tabelaReceita(rec, m, editable) {
+    if (!rec) return '';
+    const esp = E.isEspresso(m);
+    const rows = rec.etapas.map((e, i) => editable
+      ? `<tr data-row><td class="n">${i + 1}</td><td><input type="text" name="pt" value="${E.fmtTempo(e.t).replace(' s', '').replace(' h', 'h')}" inputmode="numeric" style="width:70px"></td><td><input type="number" name="pa" value="${e.acumulado}" step="0.1" inputmode="decimal" style="width:80px"></td><td><input type="text" name="pd" value="${esc(e.desc || '')}" placeholder="obs"></td><td><button type="button" class="rm" title="Remover">✕</button></td></tr>`
+      : `<tr><td class="n">${e.n || i + 1}</td><td>${E.fmtTempo(e.t)}</td><td><strong>${e.acumulado} g</strong>${e.despejo ? ` <small class="muted">(+${e.despejo})</small>` : ''}</td><td class="text-2">${esc(e.desc || '')}</td></tr>`).join('');
+    return `<div class="tbl-wrap"><table class="pours"><thead><tr><th>#</th><th>Tempo</th><th>${esp ? 'Bebida acum.' : 'Água acum.'}</th><th>${editable ? 'Observação' : 'O que fazer'}</th>${editable ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function lerDespejos(root) {
+    return $$('tr[data-row]', root).map((tr) => ({ t: parseTempo($('[name=pt]', tr).value) || 0, acumulado: +$('[name=pa]', tr).value || 0, desc: $('[name=pd]', tr).value.trim() })).filter((d) => d.acumulado || d.t || d.desc);
+  }
 
   /* ---------------- Modal ---------------- */
   function modal(html, onMount) {
@@ -145,7 +176,7 @@
           <div class="row between"><h3>${esc(g.nome)}</h3>${cal.some((c) => c.status === 'calibrado') ? '<span class="badge ok">✓ calibrado</span>' : cal.length ? '<span class="badge accent">ajustando</span>' : '<span class="badge">novo</span>'}</div>
           <small>${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc((DB.processo[g.processo] || {}).nome.split(' (')[0] || '')} · torra ${esc((DB.torra[g.torra] || {}).nome || '').toLowerCase()}</small>
           ${cal.length ? `<div class="chips" style="margin-top:8px">${cal.map((c) => `<span class="chip static ${c.status === 'calibrado' ? 'on' : ''}">${esc(metodo(c.mid).nome)} · ${c.tentativas}×${c.melhor && c.melhor.nota ? ` · melhor ${c.melhor.nota}` : ''}</span>`).join('')}</div>` : '<small class="muted">Nenhuma extração ainda.</small>'}
-        </div>`).join('')}</div>` : '<div class="empty"><div class="big">🫘</div>Nenhum grão cadastrado.</div>'}
+        </div>`).join('')}</div>` : '<div class="empty"><div class="big">${BEAN}</div>Nenhum grão cadastrado.</div>'}
       <div class="section-title"><h2>Últimas extrações</h2><a href="#/diario">ver todas</a></div>
       ${ultimas.length ? `<div class="list">${ultimas.map(itemExtracao).join('')}</div>` : '<div class="empty"><div class="big">📓</div>O diário está vazio.</div>'}
     `;
@@ -205,6 +236,7 @@
         </div>
         ${x.descritores && x.descritores.length ? `<div class="chips" style="margin-top:10px">${x.descritores.map((d) => `<span class="chip static">${esc(d)}</span>`).join('')}</div>` : ''}
         ${x.obs ? `<p class="text-2" style="margin-top:10px">${esc(x.obs)}</p>` : ''}
+        ${x.despejos && x.despejos.length ? `<details class="recipe" style="margin-top:10px" open><summary>Despejos executados (${x.despejos.length})</summary>${tabelaReceita({ etapas: x.despejos }, m, false)}</details>` : ''}
       </div>
 
       <div class="card" style="margin-top:12px">
@@ -243,6 +275,7 @@
         ${m.id !== 'cold-brew' ? `<div><span class="lbl">Temperatura</span><div class="v">${p.tempC} °C</div></div>` : ''}
         <div><span class="lbl">Tempo alvo</span><div class="v">${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</div></div>
       </div>
+      ${(() => { const rc = E.receita(m, p.dose, p.water); return rc ? `<details class="recipe" style="margin-top:10px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
       ${x ? `<div class="inline-actions"><a class="btn primary" href="#/nova?from=${x.id}">Preparar com esta receita →</a></div>` : ''}
     </div>`;
   }
@@ -250,7 +283,7 @@
   /* ======================= NOVA EXTRAÇÃO ======================= */
   routes.nova = (view, r) => {
     $('#title').textContent = 'Nova extração';
-    if (!state.graos.length) { view.innerHTML = `<div class="empty"><div class="big">🫘</div>Cadastre um grão antes de registrar extrações.<div style="margin-top:12px"><a class="btn primary" href="#/graos?novo=1">Cadastrar grão</a></div></div>`; return; }
+    if (!state.graos.length) { view.innerHTML = `<div class="empty"><div class="big">${BEAN}</div>Cadastre um grão antes de registrar extrações.<div style="margin-top:12px"><a class="btn primary" href="#/graos?novo=1">Cadastrar grão</a></div></div>`; return; }
     const from = r.q.from ? extracao(r.q.from) : null;
     const copiar = !!r.q.copiar;
     const pre = {
@@ -280,6 +313,9 @@
             <label class="field"><span class="lbl">Tempo de contato</span><input type="text" name="tempo" inputmode="numeric" placeholder="2:45 · 28 · 14h"><div class="help" id="hTempo"></div></label>
             <label class="field"><span class="lbl">TDS % (opcional)</span><input type="number" name="tds" inputmode="decimal" step="0.01" placeholder="refratômetro"></label>
           </div>
+          <div class="row between" style="margin-top:4px"><span class="lbl" style="margin:0">Despejos / ataques executados</span><div class="row" style="gap:6px"><button class="btn sm" type="button" id="pourPlano">Preencher pelo plano</button><button class="btn sm ghost" type="button" id="pourAdd">＋ linha</button></div></div>
+          <div id="pours"></div>
+          <div class="help">Tempo em que cada ataque começou e a água acumulada na balança ao fim dele. Ajuste para o que você realmente fez.</div>
         </div>
         <div class="card" style="margin-top:12px">
           <h3>Xícara</h3>
@@ -305,7 +341,23 @@
       if (p.clicks != null && F('moedorId').value) F('clicks').value = p.clicks;
       F('dose').value = p.dose; F('ratio').value = p.ratio; F('water').value = p.water; F('tempC').value = p.tempC;
       if (p.tempoS && !F('tempo').value) F('tempo').value = E.fmtTempo(p.tempoS).replace(' s', '').replace(' h', 'h');
+      preencherPlano();
     }
+    function preencherPlano() {
+      const { m } = ctx();
+      const rc = E.receita(m, +F('dose').value || m.dosePadrao, +F('water').value);
+      $('#pours').innerHTML = rc ? tabelaReceita(rc, m, true) : '<small class="muted">Sem plano padrão para este método.</small>';
+    }
+    function addLinha() {
+      let tb = $('#pours tbody');
+      if (!tb) { $('#pours').innerHTML = tabelaReceita({ etapas: [] }, ctx().m, true); tb = $('#pours tbody'); }
+      const tr = document.createElement('tr'); tr.dataset.row = '1';
+      tr.innerHTML = `<td class="n">${tb.children.length + 1}</td><td><input type="text" name="pt" inputmode="numeric" style="width:70px" placeholder="1:30"></td><td><input type="number" name="pa" step="0.1" inputmode="decimal" style="width:80px"></td><td><input type="text" name="pd" placeholder="obs"></td><td><button type="button" class="rm" title="Remover">✕</button></td>`;
+      tb.appendChild(tr);
+    }
+    $('#pourPlano').onclick = preencherPlano;
+    $('#pourAdd').onclick = addLinha;
+    $('#pours').addEventListener('click', (e) => { if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); $$('#pours tr[data-row] td.n').forEach((td, i) => (td.textContent = i + 1)); } });
     function renderSugestao() {
       const { g, m, md } = ctx();
       $('#lWater').textContent = E.isEspresso(m) ? 'Bebida na xícara (g)' : 'Água (g)';
@@ -322,6 +374,7 @@
           <div class="row between"><h3>Recomendação (${hist.length} extração(ões) anteriores)</h3><span class="badge ${reco.status === 'calibrado' ? 'ok' : 'accent'}">${reco.status}</span></div>
           <small>Última: ${fmtData(ult.data)} · nota ${ult.nota || '—'} · ${esc(ult.diag.rotulo)}</small>
           ${reco.acoes.map((a) => `<div class="acao"><div class="k">•</div><div>${esc(a.txt)}</div></div>`).join('')}
+          ${(() => { const rc = E.receita(m, reco.prox.dose, reco.prox.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
           <div class="inline-actions"><button class="btn primary sm" type="button" id="usar">Usar esta receita</button><a class="btn sm" href="#/extracao/${ult.id}">Ver última</a></div>
         </div>`;
       } else {
@@ -338,6 +391,7 @@
             <div><span class="lbl">Tempo alvo</span><div class="v">${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</div></div>
           </div>
           <ul class="factors" style="margin:8px 0 0;padding-left:18px">${sp.por.map((p) => `<li>${esc(p)}</li>`).join('')}<li>${esc(m.receita)}</li></ul>
+          ${(() => { const rc = E.receita(m, sp.dose, sp.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
           <div class="inline-actions"><button class="btn primary sm" type="button" id="usar">Usar esta receita</button></div>
         </div>`;
       }
@@ -359,6 +413,7 @@
         (from.sinais || []).forEach((s) => { const c = $(`[data-chips="sinais"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
         (from.descritores || []).forEach((s) => { const c = $(`[data-chips="descritores"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
         F('obs').value = from.obs || '';
+        if (from.despejos && from.despejos.length) $('#pours').innerHTML = tabelaReceita({ etapas: from.despejos }, ctx().m, true);
       } else {
         aplicarReceita(rec0); F('tempo').value = '';
       }
@@ -376,7 +431,8 @@
         dose: +F('dose').value, water: +F('water').value, ratio: +F('ratio').value || Math.round((+F('water').value / +F('dose').value) * 100) / 100,
         tempC: +F('tempC').value, tempoS: tempoS, tds: F('tds').value ? +F('tds').value : null,
         acidez: +F('acidez').value, docura: +F('docura').value, amargor: +F('amargor').value, corpo: +F('corpo').value, final: +F('final').value,
-        sinais: chipsVal(f, 'sinais'), descritores: chipsVal(f, 'descritores'), nota: +F('nota').value, obs: F('obs').value.trim()
+        sinais: chipsVal(f, 'sinais'), descritores: chipsVal(f, 'descritores'), nota: +F('nota').value, obs: F('obs').value.trim(),
+        despejos: lerDespejos(f)
       };
       if (E.isEspresso(m)) x.yieldG = x.water;
       x.diag = E.diagnose(x, m);
@@ -394,10 +450,10 @@
       <div class="row between"><h2 style="margin:0">Seus grãos</h2><button class="btn primary sm" id="novo">＋ Novo grão</button></div>
       <div class="list" style="margin-top:12px">${gs.length ? gs.map((g) => {
         const n = state.extracoes.filter((x) => x.graoId === g.id).length;
-        return `<div class="item" onclick="location.hash='#/grao/${g.id}'"><div class="ico">🫘</div>
-          <div><div class="t">${esc(g.nome)} ${g.arquivado ? '<span class="badge">arquivado</span>' : ''}</div><div class="s">${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc(((DB.processo[g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[g.torra] || {}).nome || '').toLowerCase())}${g.dataTorra ? ' · torrado em ' + fmtDia(g.dataTorra) : ''}</div></div>
+        return `<div class="item" onclick="location.hash='#/grao/${g.id}'"><div class="ico">${BEAN}</div>
+          <div><div class="t">${esc(g.nome)} ${g.arquivado ? '<span class="badge">arquivado</span>' : ''}</div><div class="s">${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc(((DB.processo[g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[g.torra] || {}).nome || '').toLowerCase())}${g.dataTorra ? ' · torrado em ' + fmtDia(g.dataTorra) : ''}</div>${g.torrefacao ? `<div class="s">${esc(g.torrefacao)}${g.kit ? ' · ' + esc(g.kit) : ''}</div>` : ''}</div>
           <div class="right"><div class="score">${n}</div><small>extr.</small></div></div>`;
-      }).join('') : '<div class="empty"><div class="big">🫘</div>Nenhum grão cadastrado.</div>'}</div>`;
+      }).join('') : '<div class="empty"><div class="big">${BEAN}</div>Nenhum grão cadastrado.</div>'}</div>`;
     $('#novo').onclick = () => formGrao();
     if (r.q.novo) { history.replaceState(null, '', '#/graos'); formGrao(); }
   };
@@ -420,6 +476,9 @@
           <label class="field"><span class="lbl">Data da torra</span><input type="date" name="dataTorra" value="${esc(g.dataTorra || '')}"></label>
           <label class="field"><span class="lbl">Altitude (m)</span><input type="number" name="altitude" value="${esc(g.altitude || '')}" inputmode="numeric"></label>
           <label class="field"><span class="lbl">Dose padrão (g, opcional)</span><input type="number" name="dosePadrao" value="${esc(g.dosePadrao || '')}" inputmode="decimal" step="0.1"></label>
+          <label class="field"><span class="lbl">Pontuação (SCA)</span><input type="text" name="pontuacao" value="${esc(g.pontuacao || '')}" placeholder="ex.: 86+"></label>
+          <label class="field"><span class="lbl">Kit / origem da compra</span><input type="text" name="kit" value="${esc(g.kit || '')}"></label>
+          <label class="field full"><span class="lbl">Link da loja</span><input type="text" name="link" value="${esc(g.link || '')}" inputmode="url" placeholder="https://"></label>
         </div>
         <div class="card soft" id="perfilRegiao" style="margin:4px 0 12px"></div>
         <div class="lbl">Perfil sensorial esperado (1–5)</div>
@@ -451,7 +510,7 @@
       if (del) del.onclick = () => { if (confirmar('Excluir o grão e TODAS as suas extrações?')) { state.graos = state.graos.filter((x) => x.id !== g.id); state.extracoes = state.extracoes.filter((x) => x.graoId !== g.id); save(); closeModal(); toast('Grão excluído'); go('#/graos'); } };
       f.addEventListener('submit', (e) => {
         e.preventDefault();
-        const o = { ...g, id: g.id || uid(), nome: F('nome').value.trim(), produtor: F('produtor').value.trim(), torrefacao: F('torrefacao').value.trim(), regiao: F('regiao').value, variedade: F('variedade').value.trim(), processo: F('processo').value, torra: F('torra').value, especie: F('especie').value, dataTorra: F('dataTorra').value, altitude: F('altitude').value ? +F('altitude').value : null, dosePadrao: F('dosePadrao').value ? +F('dosePadrao').value : null, acidez: +F('acidez').value, corpo: +F('corpo').value, docura: +F('docura').value, notas: chipsVal(sheet, 'notas'), obs: F('obs').value.trim(), criadoEm: g.criadoEm || new Date().toISOString() };
+        const o = { ...g, id: g.id || uid(), nome: F('nome').value.trim(), produtor: F('produtor').value.trim(), torrefacao: F('torrefacao').value.trim(), regiao: F('regiao').value, variedade: F('variedade').value.trim(), processo: F('processo').value, torra: F('torra').value, especie: F('especie').value, dataTorra: F('dataTorra').value, altitude: F('altitude').value ? +F('altitude').value : null, dosePadrao: F('dosePadrao').value ? +F('dosePadrao').value : null, acidez: +F('acidez').value, corpo: +F('corpo').value, docura: +F('docura').value, notas: chipsVal(sheet, 'notas'), obs: F('obs').value.trim(), pontuacao: F('pontuacao').value.trim(), kit: F('kit').value.trim(), link: F('link').value.trim(), criadoEm: g.criadoEm || new Date().toISOString() };
         if (isNew) state.graos.push(o); else Object.assign(g, o);
         save(); closeModal(); toast(isNew ? 'Grão cadastrado' : 'Grão atualizado');
         if (isNew) go(`#/grao/${o.id}`); else render();
@@ -476,8 +535,10 @@
         <div class="row between"><div><h2>${esc(g.nome)}</h2><small>${esc(g.produtor || '')}${g.produtor && g.torrefacao ? ' · ' : ''}${esc(g.torrefacao || '')}</small></div><button class="btn sm" id="edit">Editar</button></div>
         <div class="chips" style="margin-top:8px">
           <span class="chip static">📍 ${esc(reg.nome)}</span><span class="chip static">${esc(proc ? proc.nome.split(' (')[0] : '')}</span><span class="chip static">🔥 ${esc(tor ? tor.nome : '')}</span>
-          ${g.variedade ? `<span class="chip static">🌱 ${esc(g.variedade)}</span>` : ''}${g.dataTorra ? `<span class="chip static">📅 ${fmtDia(g.dataTorra)} (${Math.floor((Date.now() - new Date(g.dataTorra)) / 86400000)} d)</span>` : ''}
+          ${g.variedade ? `<span class="chip static">🌱 ${esc(g.variedade)}</span>` : ''}${g.altitude ? `<span class="chip static">⛰️ ${g.altitude} m</span>` : ''}${g.pontuacao ? `<span class="chip static">⭐ ${esc(g.pontuacao)}</span>` : ''}${g.dataTorra ? `<span class="chip static">📅 ${fmtDia(g.dataTorra)} (${Math.floor((Date.now() - new Date(g.dataTorra)) / 86400000)} d)</span>` : '<span class="chip static" style="color:var(--sobre)">📅 data da torra não informada</span>'}
         </div>
+        ${g.kit ? `<p class="text-2" style="margin:8px 0 0"><small>🛒 ${esc(g.kit)}${g.link ? ` · <a href="${esc(g.link)}" target="_blank" rel="noopener">página do café ↗</a>` : ''}</small></p>` : ''}
+        ${g.obs ? `<p class="text-2" style="margin:8px 0 0"><small>📝 ${esc(g.obs)}</small></p>` : ''}
         ${g.notas && g.notas.length ? `<p class="text-2" style="margin:8px 0 0"><small>${g.notas.map(esc).join(' · ')}</small></p>` : ''}
         <p class="text-2" style="margin:8px 0 0"><small>${esc(reg.dica)}</small></p>
         <div class="inline-actions"><a class="btn primary" href="#/nova?grao=${g.id}${mSel ? '&metodo=' + mSel : ''}">＋ Extrair este grão</a></div>
@@ -568,7 +629,7 @@
   routes.moedores = (view, r) => {
     $('#title').textContent = 'Moedores';
     view.innerHTML = `<div class="row between"><h2 style="margin:0">Moedores</h2><button class="btn primary sm" id="novo">＋ Novo moedor</button></div>
-      <div class="list" style="margin-top:12px">${state.moedores.length ? state.moedores.map((m) => `<div class="item" data-id="${m.id}"><div class="ico">⚙️</div><div><div class="t">${esc(m.nome)}</div><div class="s">${esc(m.tipo)} · escala ${m.min}–${m.max}, passo ${m.passo} · ${m.direcao === 'maior=fino' ? 'maior = fino' : 'menor = fino'}</div><div class="s">${Object.entries(m.refs || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${metodo(k) ? metodo(k).nome.split(' ')[0] : k} ${v}`).join(' · ')}</div></div><div>›</div></div>`).join('') : '<div class="empty"><div class="big">⚙️</div>Nenhum moedor. Sem moedor o app sugere apenas a descrição da moagem.</div>'}</div>`;
+      <div class="list" style="margin-top:12px">${state.moedores.length ? state.moedores.map((m) => `<div class="item" data-id="${m.id}"><div class="ico">⚙️</div><div><div class="t">${esc(m.nome)}</div><div class="s">${esc(m.tipo)} · escala ${m.min}–${m.max}, passo ${m.passo} · ${m.direcao === 'maior=fino' ? 'maior = fino' : 'menor = fino'}</div><div class="s">${Object.entries(m.refs || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${metodo(k) ? metodo(k).nome.split(' ')[0] : k} ${v}`).join(' · ')}</div>${m.obs ? `<div class="s" style="margin-top:4px">${esc(m.obs)}</div>` : ''}</div><div>›</div></div>`).join('') : '<div class="empty"><div class="big">⚙️</div>Nenhum moedor. Sem moedor o app sugere apenas a descrição da moagem.</div>'}</div>`;
     $('#novo').onclick = () => formMoedor();
     $$('.item[data-id]', view).forEach((el) => (el.onclick = () => formMoedor(moedor(el.dataset.id))));
     if (r.q.novo) { history.replaceState(null, '', '#/moedores'); formMoedor(); }
@@ -587,18 +648,19 @@
           <label class="field"><span class="lbl">Máximo</span><input type="number" name="max" value="${m.max}" step="any" inputmode="decimal"></label>
           <label class="field"><span class="lbl">Passo (sub-clique)</span><input type="number" name="passo" value="${m.passo}" step="any" min="0.01" inputmode="decimal"><div class="help">1 = clique inteiro; 0,5 = meio clique; 0,33 = terço.</div></label>
           <label class="field"><span class="lbl">Ajuste padrão (cliques)</span><input type="number" name="passoAjuste" value="${m.passoAjuste || ''}" step="any" inputmode="decimal" placeholder="auto"><div class="help">Quanto o motor move por ajuste normal. Vazio = automático.</div></label>
+          <label class="field full"><span class="lbl">Observações / como contar os cliques</span><textarea name="obs">${esc(m.obs || '')}</textarea></label>
         </div>
         <div class="lbl">Referências por método (cliques)</div>
         <div class="form-grid">${DB.metodos.map((x) => `<label class="field"><span class="lbl">${x.icone} ${esc(x.nome.split(' (')[0])}</span><input type="number" name="ref_${x.id}" value="${m.refs && m.refs[x.id] != null ? m.refs[x.id] : ''}" step="any" inputmode="decimal" placeholder="—"></label>`).join('')}</div>
         <div class="sheet-foot">${isNew ? '' : '<button type="button" class="btn danger" id="delMo">Excluir</button>'}<button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">Salvar</button></div>
       </form>`, (sheet) => {
       const f = $('#fMo', sheet), F = (n) => f.elements[n];
-      $('#modelo', sheet).onchange = (e) => { const mm = DB.moedoresModelo[+e.target.value]; if (!mm) return; if (!F('nome').value) F('nome').value = mm.nome.split(' (')[0]; F('tipo').value = mm.tipo; F('min').value = mm.min; F('max').value = mm.max; F('passo').value = mm.passo; DB.metodos.forEach((x) => (F('ref_' + x.id).value = mm.refs[x.id] != null ? mm.refs[x.id] : '')); };
+      $('#modelo', sheet).onchange = (e) => { const mm = DB.moedoresModelo[+e.target.value]; if (!mm) return; if (!F('nome').value) F('nome').value = mm.nome.split(' (')[0]; F('tipo').value = mm.tipo; F('min').value = mm.min; F('max').value = mm.max; F('passo').value = mm.passo; if (mm.direcao) F('direcao').value = mm.direcao; if (mm.obs) F('obs').value = mm.obs; DB.metodos.forEach((x) => (F('ref_' + x.id).value = mm.refs[x.id] != null ? mm.refs[x.id] : '')); };
       const del = $('#delMo', sheet); if (del) del.onclick = () => { if (confirmar('Excluir moedor? As extrações continuam, mas sem referência de cliques.')) { state.moedores = state.moedores.filter((x) => x.id !== m.id); save(); closeModal(); render(); } };
       f.addEventListener('submit', (e) => {
         e.preventDefault();
         const refs = {}; DB.metodos.forEach((x) => { const v = F('ref_' + x.id).value; if (v !== '') refs[x.id] = +v; });
-        const o = { ...m, id: m.id || uid(), nome: F('nome').value.trim(), tipo: F('tipo').value, direcao: F('direcao').value, min: +F('min').value, max: +F('max').value, passo: +F('passo').value || 1, passoAjuste: F('passoAjuste').value ? +F('passoAjuste').value : null, refs };
+        const o = { ...m, id: m.id || uid(), nome: F('nome').value.trim(), tipo: F('tipo').value, direcao: F('direcao').value, min: +F('min').value, max: +F('max').value, passo: +F('passo').value || 1, passoAjuste: F('passoAjuste').value ? +F('passoAjuste').value : null, refs, obs: F('obs').value.trim() };
         if (o.max <= o.min) { toast('Máximo deve ser maior que o mínimo.'); return; }
         if (isNew) state.moedores.push(o); else Object.assign(m, o);
         save(); closeModal(); toast('Moedor salvo'); render();
@@ -611,7 +673,7 @@
     $('#title').textContent = 'Biblioteca';
     const tab = r.q.tab || 'regioes';
     const q = (r.q.q || '').toLowerCase();
-    const tabs = [['regioes', 'Regiões'], ['processos', 'Processos'], ['torras', 'Torras'], ['metodos', 'Métodos'], ['indicacoes', 'Indicações']];
+    const tabs = [['regioes', 'Regiões'], ['processos', 'Processos'], ['torras', 'Torras'], ['metodos', 'Métodos'], ['receitas', 'Receitas'], ['indicacoes', 'Indicações']];
     const match = (s) => !q || String(s).toLowerCase().includes(q);
     let body = '';
     if (tab === 'regioes') body = DB.regioes.filter((x) => match(x.nome + x.perfil + x.notas.join(' ') + x.uf)).map((x) => `<details class="lib"><summary>${esc(x.nome)} <span class="badge">${esc(x.uf)}</span></summary><div class="body">
@@ -630,6 +692,7 @@
       <p><strong>Temperatura:</strong> ${x.tempC.min}–${x.tempC.max} °C · <strong>Tempo:</strong> ${E.fmtTempo(x.tempoS.min)}–${E.fmtTempo(x.tempoS.max)}</p>
       <p><strong>Moagem:</strong> ${esc(x.grindDesc)} (~${x.microns[0]}–${x.microns[1]} µm)</p>
       <p><strong>Sensibilidade:</strong> ${esc(x.sensibilidade)}</p><p><strong>Receita base:</strong> ${esc(x.receita)}</p></div></details>`).join('');
+    if (tab === 'receitas') body = DB.metodos.filter((x) => DB.receitas[x.id] && match(x.nome)).map((x) => { const rc = E.receita(x, x.dosePadrao, Math.round(x.dosePadrao * x.ratio.padrao)); return `<details class="lib"><summary>${x.icone} ${esc(x.nome)} <span class="badge">${x.dosePadrao} g / ${rc.total} g</span></summary><div class="body"><p><strong>${esc(rc.nome)}</strong> · ${x.tempC.padrao} °C · moagem ${esc(x.grindDesc)}</p>${tabelaReceita(rc, x, false)}<p style="margin-top:8px">💡 ${esc(x.sensibilidade)}</p></div></details>`; }).join('');
     if (tab === 'indicacoes') body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perfil do grão</th><th>Métodos</th><th>Razão</th><th>Temp.</th><th>Torra</th></tr></thead><tbody>${DB.indicacoesPerfil.filter((x) => match(x.perfil)).map((x) => `<tr><td>${esc(x.perfil)}</td><td>${x.metodos.map((m) => metodo(m).icone + ' ' + metodo(m).nome.split(' (')[0]).join('<br>')}</td><td>${esc(x.razao)}</td><td>${esc(x.tempC)}</td><td>${esc(x.torra)}</td></tr>`).join('')}</tbody></table></div>
       <div class="card soft" style="margin-top:12px"><h3>Escala de moagem</h3><table class="tbl">${DB.grindEscala.map((g) => `<tr><td>${g.n}</td><td><strong>${g.nome}</strong></td><td>${esc(g.ex)}</td></tr>`).join('')}</table></div>`;
     view.innerHTML = `<input class="search" type="text" id="q" placeholder="Buscar…" value="${esc(r.q.q || '')}">
@@ -659,6 +722,7 @@
         ${isFile ? '<p class="text-2">Você abriu o arquivo diretamente (file://). Funciona, mas para instalar como app é preciso servir a pasta por HTTP/HTTPS — veja o README (GitHub Pages ou um servidor local na mesma rede Wi-Fi).</p>' : ''}
         <button class="btn primary" id="btnInstall" ${deferredInstall ? '' : 'hidden'}>Instalar aplicativo</button>
         <p class="text-2" style="margin-top:8px"><strong>Android (Chrome):</strong> menu ⋮ → “Instalar aplicativo” ou “Adicionar à tela inicial”.<br><strong>iPhone (Safari):</strong> botão Compartilhar → “Adicionar à Tela de Início”.</p></div>
+      <div class="card" style="margin-top:12px"><h3>Meus cafés e moedores</h3><p class="text-2">O app vem com o catálogo dos cafés que você comprou (Maeda, Encantos do Café, Net Cafés, Colheita) e com o Starseeker E55 Pro e o Kingrinder K2. Se você excluiu algum e quer de volta, reimporte: só entra o que estiver faltando.</p><button class="btn" id="reimport">Reimportar catálogo</button></div>
       <div class="card" style="margin-top:12px"><h3>Dados de exemplo</h3><p class="text-2">Carrega 1 moedor, 2 grãos e uma sequência de extrações para você ver o motor funcionando.</p><button class="btn" id="demo">Carregar exemplo</button></div>
       <div class="card" style="margin-top:12px"><h3>Zona de perigo</h3><button class="btn danger" id="wipe">Apagar todos os dados</button></div>
       <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · v1 · dados 100 % locais, sem rede.</small></p>`;
@@ -670,6 +734,7 @@
     $('#alvo').onchange = (e) => { state.config.notaAlvo = +e.target.value || 8; save(); toast('Salvo'); };
     $('#tema').onchange = (e) => { state.config.tema = e.target.value; save(); applyTheme(); };
     $('#btnInstall').onclick = async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $('#btnInstall').hidden = true; };
+    $('#reimport').onclick = () => { const r = seedCatalogo(true); toast(`Importados: ${r.graos} grão(s), ${r.moedores} moedor(es)`); };
     $('#demo').onclick = () => { if (state.extracoes.length && !confirmar('Adicionar dados de exemplo aos dados atuais?')) return; carregarDemo(); toast('Exemplo carregado'); go('#/inicio'); };
     $('#wipe').onclick = () => { if (confirmar('Apagar TODOS os dados deste aparelho? Não há como desfazer.')) { localStorage.removeItem(KEY); state = load(); toast('Dados apagados'); go('#/inicio'); } };
   };
@@ -698,6 +763,7 @@
 
   /* ---------------- boot ---------------- */
   applyTheme();
+  seedCatalogo(false);
   render();
   window.CafeLab = { state: () => state, save, carregarDemo };
 })();

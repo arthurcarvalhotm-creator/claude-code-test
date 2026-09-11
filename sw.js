@@ -1,5 +1,5 @@
 /* Service worker: cache-first para funcionar offline depois da primeira visita. */
-const CACHE = 'cafelab-v1';
+const CACHE = 'cafelab-v2';
 const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
 

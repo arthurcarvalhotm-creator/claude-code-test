@@ -226,3 +226,20 @@ table.tbl th { color: var(--muted); font-weight: 600; font-size: .78rem; }
 .calib { display: inline-flex; align-items: center; gap: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 @media (min-width: 720px) { body { padding-bottom: 24px; } nav.bottom { position: sticky; top: 0; bottom: auto; height: 56px; border-top: 0; border-bottom: 1px solid var(--border); padding: 0; grid-template-columns: repeat(5, minmax(0, 140px)); justify-content: center; z-index: 21; } nav.bottom a.fab .i { margin-top: 0; width: 34px; height: 34px; font-size: 1.2rem; border-radius: 10px; } .topbar { position: static; } }
+
+/* Ícone de grãos de café (SVG inline) */
+.bean-ico { display: inline-block; vertical-align: middle; color: currentColor; }
+nav.bottom a .i .bean-ico { width: 24px; height: 24px; }
+.item .ico .bean-ico, .empty .big .bean-ico { width: 28px; height: 28px; color: var(--accent); }
+.empty .big .bean-ico { width: 44px; height: 44px; }
+/* Despejos */
+.pours { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.pours th, .pours td { padding: 6px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pours th { color: var(--muted); font-weight: 600; font-size: .75rem; text-align: left; }
+.pours td.n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pours input { padding: 6px 8px; font-size: 15px; border-radius: 8px; }
+.pours .rm { appearance: none; border: 0; background: transparent; color: var(--danger); cursor: pointer; font-size: 1rem; padding: 4px; }
+details.recipe summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: .9rem; list-style: none; }
+details.recipe summary::-webkit-details-marker { display: none; }
+details.recipe summary::before { content: '▸ '; }
+details.recipe[open] summary::before { content: '▾ '; }

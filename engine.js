@@ -44,7 +44,8 @@ window.Engine = (function () {
       // interpola pela escala 1–7
       base = min + (max - min) * ((method.grind - 0.5) / 7);
     }
-    const stepClicks = (max - min) / 8; // um descritor ≈ 1/8 da escala
+    // um "passo" de descritor: 1/12 da escala em filtrados; espresso é muito mais sensível (1/30)
+    const stepClicks = (max - min) / (isEspresso(method) ? 30 : 12);
     const sinal = grinder.direcao === 'maior=fino' ? -1 : 1; // padrão: menor número = mais fino
     return snap(grinder, base + sinal * off * stepClicks);
   }
@@ -292,6 +293,21 @@ window.Engine = (function () {
     return { diag, acoes, prox, status, confianca: r2(clamp(confianca, 0, 0.95)), deltaClicks };
   }
 
+  /* ---------- Receita de despejos escalada para dose × água ---------- */
+  function receita(method, dose, water) {
+    const r = DB.receitas[method.id];
+    if (!r) return null;
+    const total = Number(water) || Math.round((Number(dose) || method.dosePadrao) * method.ratio.padrao);
+    let prev = 0;
+    const etapas = r.etapas.map((e, i) => {
+      const acumulado = isEspresso(method) ? r1(total * e.agua) : Math.round(total * e.agua);
+      const despejo = Math.max(0, Math.round((acumulado - prev) * 10) / 10);
+      prev = acumulado;
+      return { n: i + 1, t: e.t, acumulado, despejo, desc: e.desc };
+    });
+    return { nome: r.nome, etapas, total };
+  }
+
   /* ---------- Estado de calibração de um grão ---------- */
   function calibration(brews) {
     const n = brews.length;
@@ -320,5 +336,5 @@ window.Engine = (function () {
     return parts.join(' · ');
   }
 
-  return { startingPoint, diagnose, recommend, calibration, ey, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, isEspresso, isPressao };
+  return { startingPoint, diagnose, recommend, calibration, ey, receita, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, isEspresso, isPressao };
 })();

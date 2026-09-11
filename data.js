@@ -175,6 +175,17 @@ window.CAFE_DB = (function () {
       dica: 'Como toda canephora: moagem mais grossa, temperatura 88–91 °C, razões curtas. Em cold brew entrega chocolate intenso.'
     },
     {
+      id: 'campo-das-vertentes', nome: 'Campo das Vertentes', uf: 'MG',
+      altitude: [900, 1200], clima: 'Região central de Minas (São João del-Rei, Santo Antônio do Amparo, Campo Belo). Planalto com clima ameno, colheita tardia e maturação lenta.',
+      perfil: 'Doçura marcante, corpo médio a cheio, acidez cítrica média. Chocolate, caramelo, frutas amarelas; lotes especiais trazem florais e laranja.',
+      notas: ['chocolate', 'caramelo', 'frutas amarelas', 'laranja', 'floral'],
+      acidez: 3, corpo: 4, docura: 4,
+      variedades: ['Catuaí', 'Mundo Novo', 'Bourbon Amarelo', 'Geisha', 'Arara'],
+      processos: ['natural', 'cereja-descascado', 'anaerobico', 'lavado'],
+      metodos: ['v60', 'kalita', 'espresso', 'aeropress', 'clever'],
+      dica: 'Região em ascensão nos cafés especiais. Geishas e lotes fermentados daqui pedem torra clara, água 92–94 °C e razão 1:16–1:17.'
+    },
+    {
       id: 'outra', nome: 'Outra região / não informada', uf: '—',
       altitude: [600, 1400], clima: '—',
       perfil: 'Perfil médio brasileiro: corpo médio-alto, doçura, acidez moderada.',
@@ -393,6 +404,12 @@ window.CAFE_DB = (function () {
     { nome: 'Baratza Encore', tipo: 'elétrico', min: 1, max: 40, passo: 1, refs: { espresso: 5, moka: 8, aeropress: 12, v60: 15, kalita: 17, melitta: 17, 'coador-pano': 17, clever: 17, chemex: 22, 'prensa-francesa': 28, 'cold-brew': 32 } },
     { nome: 'Fellow Ode Gen 2', tipo: 'elétrico', min: 1, max: 11, passo: 0.33, refs: { moka: 1.5, aeropress: 2.5, v60: 4, kalita: 4.5, melitta: 4.5, 'coador-pano': 4.5, clever: 5, chemex: 6, 'prensa-francesa': 8, 'cold-brew': 9 } },
     { nome: 'DF64 / Eureka Mignon (escala genérica 0–50)', tipo: 'elétrico', min: 0, max: 50, passo: 0.5, refs: { espresso: 8, moka: 14, aeropress: 22, v60: 28, kalita: 30, melitta: 30, 'coador-pano': 30, clever: 30, chemex: 34, 'prensa-francesa': 40, 'cold-brew': 44 } },
+    { id: 'starseeker-e55-pro', nome: 'Starseeker E55 Pro', tipo: 'elétrico', min: 0, max: 60, passo: 0.5, direcao: 'menor=fino',
+      obs: 'Mós cônicas de 55 mm (titânio), single dose, ajuste stepless com anel numerado. Referências são aproximadas: o zero é o ponto em que as mós encostam (gire no sentido horário até o mais fino com o motor ligado, sem café). Ajuste fino em meios-pontos.',
+      refs: { espresso: 10, moka: 16, aeropress: 22, v60: 28, kalita: 30, melitta: 30, 'coador-pano': 30, clever: 30, chemex: 34, 'prensa-francesa': 40, 'cold-brew': 46 } },
+    { id: 'kingrinder-k2', nome: 'Kingrinder K2', tipo: 'manual', min: 0, max: 60, passo: 1, direcao: 'menor=fino',
+      obs: 'Mós cônicas de 48 mm, ajuste interno: 18 µm por clique, 40 cliques por volta (faixa útil ~0–1030 µm ≈ 57 cliques). Conte os cliques a partir do zero (mós encostadas), girando o disco no sentido anti-horário. Referências calculadas a partir da granulometria alvo de cada método.',
+      refs: { espresso: 14, moka: 22, aeropress: 32, v60: 38, kalita: 44, melitta: 44, 'coador-pano': 44, clever: 44, chemex: 50, 'prensa-francesa': 54, 'cold-brew': 57 } },
     { nome: 'Genérico (0–40)', tipo: 'manual', min: 0, max: 40, passo: 1, refs: { espresso: 6, moka: 10, aeropress: 15, v60: 18, kalita: 20, melitta: 20, 'coador-pano': 20, clever: 20, chemex: 24, 'prensa-francesa': 30, 'cold-brew': 34 } }
   ];
 
@@ -426,10 +443,106 @@ window.CAFE_DB = (function () {
     { perfil: 'Torra escura (qualquer origem)', metodos: ['prensa-francesa', 'moka', 'coador-pano', 'cold-brew'], razao: '1:13 – 1:15', tempC: '85 – 89 °C', torra: 'escura' }
   ];
 
+  /* ---------- Receitas de despejo por método ----------
+   * etapas: t = segundos a partir do início; agua = fração da água total
+   * acumulada ao fim da etapa (0–1); desc = o que fazer. O motor converte
+   * para gramas conforme dose × razão da extração. */
+  const receitas = {
+    v60: { nome: 'V60 – 4 despejos (estilo Tetsu/Hoffmann)', etapas: [
+      { t: 0, agua: 0.19, desc: 'Bloom: despeje ~3× a dose em círculos, molhando todo o pó. Gire o dripper suavemente.' },
+      { t: 45, agua: 0.50, desc: '2º ataque: espiral do centro para a borda, fluxo constante, até 50 % da água.' },
+      { t: 75, agua: 0.75, desc: '3º ataque: até 75 % da água, mantendo o nível no filtro.' },
+      { t: 105, agua: 1.00, desc: '4º ataque: complete a água. Gire (swirl) para nivelar o leito.' },
+      { t: 165, agua: 1.00, desc: 'Drenagem. Alvo de término 2:45–3:15. Leito plano, sem pó agarrado na parede.' }
+    ] },
+    kalita: { nome: 'Kalita Wave – pulsos', etapas: [
+      { t: 0, agua: 0.18, desc: 'Bloom com ~3× a dose por 35–40 s; mexa uma vez.' },
+      { t: 40, agua: 0.40, desc: '2º despejo em pulsos curtos no centro, sem tocar a parede do filtro.' },
+      { t: 80, agua: 0.60, desc: '3º despejo, mantendo o nível constante (cerca de 1 cm acima do pó).' },
+      { t: 120, agua: 0.80, desc: '4º despejo.' },
+      { t: 160, agua: 1.00, desc: '5º despejo: complete a água.' },
+      { t: 215, agua: 1.00, desc: 'Drenagem. Alvo 3:15–3:45.' }
+    ] },
+    melitta: { nome: 'Melitta – bloom + despejo contínuo', etapas: [
+      { t: 0, agua: 0.20, desc: 'Bloom com ~3× a dose por 40 s.' },
+      { t: 40, agua: 0.60, desc: 'Despejo contínuo e lento em espiral até 60 %.' },
+      { t: 100, agua: 1.00, desc: 'Complete a água em despejo suave. Não deixe secar entre despejos.' },
+      { t: 230, agua: 1.00, desc: 'Drenagem. Alvo 3:30–4:15.' }
+    ] },
+    'coador-pano': { nome: 'Coador de pano', etapas: [
+      { t: 0, agua: 0.20, desc: 'Escalde o pano antes. Bloom com ~2,5× a dose por 30 s.' },
+      { t: 30, agua: 0.60, desc: 'Despejo contínuo em espiral até 60 %.' },
+      { t: 90, agua: 1.00, desc: 'Complete a água mantendo o pó submerso.' },
+      { t: 190, agua: 1.00, desc: 'Drenagem. Alvo 2:30–3:30.' }
+    ] },
+    chemex: { nome: 'Chemex – 3 ataques', etapas: [
+      { t: 0, agua: 0.16, desc: 'Bloom por 45 s com ~2,5× a dose. Mexa com colher para molhar tudo.' },
+      { t: 45, agua: 0.55, desc: '2º ataque em espiral, mantendo o filtro cheio até ~2 cm da borda.' },
+      { t: 120, agua: 1.00, desc: '3º ataque: complete a água.' },
+      { t: 250, agua: 1.00, desc: 'Drenagem. Alvo 4:00–5:00.' }
+    ] },
+    clever: { nome: 'Clever – imersão', etapas: [
+      { t: 0, agua: 1.00, desc: 'Água primeiro, café depois (ou vice-versa). Mexa 3 voltas e tampe.' },
+      { t: 120, agua: 1.00, desc: 'Quebre a crosta com 2 voltas suaves; retampe.' },
+      { t: 180, agua: 1.00, desc: 'Coloque sobre a xícara/servidor para drenar (~60–90 s).' }
+    ] },
+    aeropress: { nome: 'AeroPress – padrão', etapas: [
+      { t: 0, agua: 1.00, desc: 'Despeje toda a água em 10 s; mexa 3× para frente e para trás.' },
+      { t: 90, agua: 1.00, desc: 'Encaixe o êmbolo e pressione devagar (~30 s) até ouvir o ar.' }
+    ] },
+    'prensa-francesa': { nome: 'Prensa Francesa – método Hoffmann', etapas: [
+      { t: 0, agua: 1.00, desc: 'Despeje toda a água de uma vez. Não mexa.' },
+      { t: 240, agua: 1.00, desc: 'Quebre a crosta com colher e retire a espuma/pó flutuante.' },
+      { t: 480, agua: 1.00, desc: 'Coloque o êmbolo só até a superfície (não pressione até o fundo) e sirva.' }
+    ] },
+    espresso: { nome: 'Espresso – pré-infusão + extração', etapas: [
+      { t: 0, agua: 0.10, desc: 'Pré-infusão: 3–8 s em baixa pressão até as primeiras gotas.' },
+      { t: 8, agua: 1.00, desc: 'Extração a 9 bar até o peso alvo na xícara. Cor mel → loiro = fim.' }
+    ] },
+    moka: { nome: 'Moka', etapas: [
+      { t: 0, agua: 1.00, desc: 'Água pré-aquecida até a válvula, pó nivelado sem compactar, fogo baixo.' },
+      { t: 100, agua: 1.00, desc: 'Quando o fluxo ficar claro/borbulhar, retire do fogo e resfrie a base.' }
+    ] },
+    'cold-brew': { nome: 'Cold brew – concentrado', etapas: [
+      { t: 0, agua: 1.00, desc: 'Misture toda a água, mexa até molhar todo o pó, tampe.' },
+      { t: 50400, agua: 1.00, desc: '14–18 h em temperatura ambiente (ou 18–24 h na geladeira). Filtre e dilua 1:1.' }
+    ] }
+  };
+
+  /* ---------- Catálogo: cafés comprados pelo usuário ----------
+   * Importados automaticamente para "Grãos" na primeira abertura (e ao
+   * atualizar o app). Campos marcados "confirmar" vieram incompletos das
+   * lojas — ajuste pelo rótulo. */
+  const CATALOGO_VERSAO = 1;
+  const catalogo = [
+    // ---- Maeda Coffee · Kit Inicial ----
+    { catalogoId: 'maeda-doce-cacau', nome: 'Maeda · Doce Cacau', torrefacao: 'Maeda Coffee', kit: 'Kit Inicial (Maeda)', produtor: 'Poço Fundo – MG', regiao: 'sul-de-minas', variedade: '', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '84+', acidez: 2, corpo: 4, docura: 4, notas: ['caramelo', 'chocolate ao leite', 'mel'], link: 'https://www.maedacoffee.com.br/produtos/doce-cacau/', obs: 'Linha Clássicos Maeda. Descrito como versátil para filtrados e prensa francesa.' },
+    { catalogoId: 'maeda-sol-do-paraiso', nome: 'Maeda · Sol do Paraíso', torrefacao: 'Maeda Coffee', kit: 'Kit Inicial (Maeda)', produtor: 'Sirlei Sanfelice – São Sebastião do Paraíso – MG', regiao: 'sul-de-minas', variedade: '', processo: 'natural', torra: 'media-clara', especie: 'arabica', pontuacao: '85+', acidez: 3, corpo: 3, docura: 4, notas: ['frutas amarelas', 'mel', 'cítrico'], link: 'https://www.maedacoffee.com.br/produtos/sol-do-paraiso/', obs: 'Acidez cítrica com final doce. Processo não informado na loja (confirmar no rótulo).' },
+    // ---- Maeda Coffee · Kit Exóticos ----
+    { catalogoId: 'maeda-furo', nome: 'Maeda · FŪRO', torrefacao: 'Maeda Coffee', kit: 'Kit Exóticos (Maeda)', produtor: '', regiao: 'outra', variedade: '', processo: 'fermentacao-induzida', torra: 'clara', especie: 'arabica', pontuacao: '', acidez: 4, corpo: 3, docura: 4, notas: ['frutas vermelhas', 'floral', 'vinho'], link: 'https://www.maedacoffee.com.br/produtos/', obs: 'Linha Exóticos Maeda (lotes fermentados). Região, produtor, processo exato e notas: confirmar no rótulo.' },
+    { catalogoId: 'maeda-hanagasumi', nome: 'Maeda · HANAGASUMI', torrefacao: 'Maeda Coffee', kit: 'Kit Exóticos (Maeda)', produtor: '', regiao: 'outra', variedade: '', processo: 'fermentacao-induzida', torra: 'clara', especie: 'arabica', pontuacao: '', acidez: 4, corpo: 3, docura: 4, notas: ['floral', 'frutas tropicais', 'mel'], link: 'https://www.maedacoffee.com.br/produtos/', obs: 'Linha Exóticos Maeda (lotes fermentados). Região, produtor, processo exato e notas: confirmar no rótulo.' },
+    { catalogoId: 'maeda-caturra-koji', nome: 'Maeda · Caturra Amarelo (Koji)', torrefacao: 'Maeda Coffee', kit: 'Kit Exóticos (Maeda) – confirmar se veio no kit', produtor: 'Felipe Carvalho', regiao: 'alta-mogiana', variedade: 'Caturra Amarelo', processo: 'fermentacao-induzida', torra: 'clara', especie: 'arabica', pontuacao: '88+', acidez: 4, corpo: 3, docura: 4, notas: ['floral', 'frutas vermelhas', 'uva'], link: 'https://www.maedacoffee.com.br/produtos/cafe-caturra-amarelo-c3ozp/', obs: 'Fermentação com Koji. Notas: flores brancas, frutas vermelhas, amora, jabuticaba. Se não veio no seu kit, exclua este grão.' },
+    // ---- Encantos do Café · Kit Degustação 4 cafés ----
+    { catalogoId: 'encantos-agrado', nome: 'Encantos · AGRADO', torrefacao: 'Encantos do Café (Nova Lima – MG)', kit: 'Kit Degustação 4 cafés (Encantos)', produtor: 'Horácio Moura – Fazenda Três Barras', regiao: 'matas-de-minas', variedade: 'Catucaí Amarelo', processo: 'natural', torra: 'media-escura', especie: 'arabica', pontuacao: '', acidez: 2, corpo: 4, docura: 4, notas: ['chocolate ao leite', 'caramelo'], link: 'https://loja.encantosdocafe.com.br/cafe-agrado-250g', obs: 'Xícara confortável e aveludada, corpo cremoso, perfil de “browning”. Boa base para espresso e bebidas com leite.' },
+    { catalogoId: 'encantos-desejo', nome: 'Encantos · DESEJO', torrefacao: 'Encantos do Café (Nova Lima – MG)', kit: 'Kit Degustação 4 cafés (Encantos)', produtor: 'Fazenda Sertão – Carmo de Minas', regiao: 'mantiqueira', variedade: 'Bourbon Amarelo', processo: 'fermentacao-induzida', torra: 'media-clara', especie: 'arabica', pontuacao: '', acidez: 4, corpo: 3, docura: 4, notas: ['frutas tropicais', 'mel', 'cítrico'], link: 'https://loja.encantosdocafe.com.br/cafe-desejo-250g', obs: 'Fermentação induzida por leveduras. Notas de manga, mel e maracujá; acidez cítrica brilhante, corpo cremoso. Torra: confirmar no rótulo.' },
+    { catalogoId: 'encantos-raro', nome: 'Encantos · RARO (Geisha)', torrefacao: 'Encantos do Café (Nova Lima – MG)', kit: 'Kit Degustação 4 cafés (Encantos)', produtor: 'Gabriel Lamounier – Fazenda Guariroba', regiao: 'campo-das-vertentes', variedade: 'Geisha', processo: 'anaerobico', torra: 'clara', especie: 'arabica', pontuacao: '90', acidez: 4, corpo: 2, docura: 4, notas: ['laranja', 'mel', 'floral'], link: 'https://loja.encantosdocafe.com.br/cafe-raro-250g', obs: 'Natural fermentado, 90 pts SCA. Delicado: doce de laranja, mel, floral. Trate com cuidado: 92–94 °C, razão 1:16–1:17, não deixe passar de 3:30 no V60.' },
+    { catalogoId: 'encantos-sensacao', nome: 'Encantos · Blend SENSAÇÃO', torrefacao: 'Encantos do Café (Nova Lima – MG)', kit: 'Kit Degustação 4 cafés (Encantos)', produtor: 'Base: Horácio Moura – Fazenda Três Barras', regiao: 'matas-de-minas', variedade: 'Blend (Catucaí Amarelo e outros)', processo: 'natural', torra: 'media', especie: 'blend', pontuacao: '', acidez: 2, corpo: 4, docura: 5, notas: ['mel', 'rapadura', 'melado'], link: 'https://loja.encantosdocafe.com.br/cafe-blend-sensacao-250g', obs: 'Blend de naturais de regiões diferentes, criado por Samuel Angarani. Corpo cremoso, doçura de rapadura e melaço. Torra: confirmar no rótulo.' },
+    // ---- NETCAFÉS (Caparaó) – foto ----
+    { catalogoId: 'netcafes-caramelo-chocolate', nome: 'Net Cafés · Caramelo & Chocolate', torrefacao: 'NETCAFÉS (Caparaó)', kit: 'Foto – 2 pacotes de 250 g', produtor: 'Família Emerich – Alto Jequitibá – MG', regiao: 'caparao', variedade: 'Catuaí Vermelho', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '', altitude: 1200, acidez: 2, corpo: 4, docura: 5, notas: ['caramelo', 'chocolate', 'rapadura'], link: 'https://www.netcafes.com.br/product-page/caf%C3%A9-especial-caramelo-e-chocolate-250g', obs: 'Doçura intensa, corpo alto, equilíbrio caramelo/chocolate. Você tem 2 pacotes: use a mesma receita calibrada no segundo.' },
+    { catalogoId: 'netcafes-frutas-amarelas', nome: 'Net Cafés · Frutas Amarelas', torrefacao: 'NETCAFÉS (Caparaó)', kit: 'Foto – 250 g', produtor: 'Caparaó – MG (Alto Jequitibá)', regiao: 'caparao', variedade: 'Catucaí 785', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '', altitude: 1200, acidez: 4, corpo: 3, docura: 4, notas: ['frutas amarelas', 'frutas tropicais', 'cítrico'], link: 'https://loja.netcafes.com.br/produtos/frutasamarelas/', obs: 'Natural fermentado. Frutas amarelas e maracujá, acidez cítrica brilhante, corpo licoroso. Se aparecer nota de álcool, baixe 1–2 °C.' },
+    { catalogoId: 'netcafes-frutas-vermelhas', nome: 'Net Cafés · Frutas Vermelhas', torrefacao: 'NETCAFÉS (Caparaó)', kit: 'Foto – 250 g', produtor: 'Caparaó – MG (Alto Jequitibá)', regiao: 'caparao', variedade: 'Catucaí 785', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '', altitude: 1200, acidez: 4, corpo: 4, docura: 4, notas: ['frutas vermelhas', 'vinho', 'caramelo'], link: 'https://loja.netcafes.com.br/produtos/frutasvermelhas', obs: 'Natural fermentado. Frutas vermelhas bem maduras, corpo licoroso, doçura intensa.' },
+    // ---- Colheita Café (Caparaó) – foto ----
+    { catalogoId: 'colheita-pra-beber-de-balde', nome: 'Colheita · Pra Beber de Balde', torrefacao: 'Colheita Café (Caparaó)', kit: 'Foto – 250 g', produtor: 'Flávio Protázio – Sítio Família Protázio – Espera Feliz – MG', regiao: 'caparao', variedade: 'Caparaó Amarelo + Catuaí Vermelho', processo: 'cereja-descascado', torra: 'media', especie: 'arabica', pontuacao: '', altitude: 1230, acidez: 3, corpo: 3, docura: 4, notas: ['baunilha', 'rapadura', 'mel', 'castanhas', 'floral', 'especiarias'], link: 'https://colheitacafe.com.br/', obs: 'Safra 2024/25. CD equilibrado, “de beber de balde”: bom para calibrar o moedor num café previsível. Torra: confirmar no rótulo.' },
+    { catalogoId: 'colheita-halls-de-cereja', nome: 'Colheita · Halls de Cereja', torrefacao: 'Colheita Café (Caparaó)', kit: 'Foto – 250 g', produtor: 'Sítio Morro Preto (confirmar no rótulo)', regiao: 'caparao', variedade: 'MGS Aranãs', processo: 'natural', torra: 'media-clara', especie: 'arabica', pontuacao: '', acidez: 3, corpo: 2, docura: 4, notas: ['frutas vermelhas', 'ervas', 'floral'], link: 'https://colheitacafe.com.br/', obs: 'Variedade rara MGS Aranãs (1985), grãos grandes. Cereja fresca “de bala”, final refrescante e mentolado, corpo suave, acidez média, final limpo. Processo/torra/origem: confirmar no rótulo.' },
+    { catalogoId: 'colheita-blend-da-copa', nome: 'Colheita · Blend da Copa', torrefacao: 'Colheita Café (Caparaó)', kit: 'Foto – 250 g', produtor: 'Ademir Lacerda – Dores do Rio Preto – ES', regiao: 'caparao', variedade: 'Caparaó Amarelo', processo: 'cereja-descascado', torra: 'media', especie: 'arabica', pontuacao: '87', altitude: 1250, acidez: 3, corpo: 4, docura: 5, notas: ['frutas tropicais', 'frutas amarelas', 'caramelo', 'melado'], link: 'https://colheitacafe.com.br/', obs: 'Maracujá, cajá e caramelo com fundo de doce de leite. Colheita seletiva e via úmida. Torra: confirmar no rótulo.' },
+    { catalogoId: 'colheita-castanhas-caramelo', nome: 'Colheita · Castanhas & Caramelo', torrefacao: 'Colheita Café (Caparaó)', kit: 'Foto – 250 g', produtor: 'Caparaó (confirmar no rótulo)', regiao: 'caparao', variedade: '', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '', acidez: 2, corpo: 4, docura: 4, notas: ['castanhas', 'caramelo', 'chocolate'], link: 'https://colheitacafe.com.br/', obs: 'Sem ficha técnica pública encontrada. Produtor, variedade, processo e torra: confirmar no rótulo.' },
+    { catalogoId: 'colheita-rotulo-laranja', nome: 'Colheita · (rótulo laranja – nome a confirmar)', torrefacao: 'Colheita Café (Caparaó)', kit: 'Foto – 250 g', produtor: 'Caparaó (confirmar no rótulo)', regiao: 'caparao', variedade: '', processo: 'natural', torra: 'media', especie: 'arabica', pontuacao: '', acidez: 3, corpo: 3, docura: 4, notas: ['caramelo', 'frutas amarelas'], link: 'https://colheitacafe.com.br/', obs: 'Na foto só aparecem as terminações “…INHA / …OR”. Edite o nome e a ficha pelo rótulo.' }
+  ];
+
   const byId = (arr) => Object.fromEntries(arr.map(x => [x.id, x]));
 
   return {
-    regioes, processos, torras, metodos, grindEscala, moedoresModelo, descritores, sinais, indicacoesPerfil,
+    regioes, processos, torras, metodos, grindEscala, moedoresModelo, descritores, sinais, indicacoesPerfil, receitas, catalogo, CATALOGO_VERSAO,
     regiao: byId(regioes), processo: byId(processos), torra: byId(torras), metodo: byId(metodos), sinal: byId(sinais)
   };
 })();
