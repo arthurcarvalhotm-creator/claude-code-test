@@ -1,6 +1,6 @@
 /* Service worker: cache-first para funcionar offline depois da primeira visita. */
-const CACHE = 'cafelab-v2';
-const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './manifest.webmanifest',
+const CACHE = 'cafelab-v3';
+const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
 
 self.addEventListener('install', (e) => {
@@ -11,6 +11,7 @@ self.addEventListener('activate', (e) => {
 });
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).hostname.endsWith('anthropic.com')) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();

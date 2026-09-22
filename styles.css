@@ -243,3 +243,68 @@ details.recipe summary { cursor: pointer; font-weight: 600; color: var(--accent)
 details.recipe summary::-webkit-details-marker { display: none; }
 details.recipe summary::before { content: '▸ '; }
 details.recipe[open] summary::before { content: '▾ '; }
+
+/* ---------- Timer guiado ---------- */
+.sheet.sheet-full { max-width: 560px; max-height: 100vh; min-height: 100%; border-radius: 0; }
+@media (min-width: 720px) { .sheet.sheet-full { min-height: auto; max-height: 94vh; border-radius: 18px; } }
+.tmr-main { display: grid; grid-template-columns: 1fr 96px; gap: 14px; align-items: center; margin: 6px 0 10px; }
+.tmr-ring { position: relative; width: 100%; max-width: 260px; margin: 0 auto; aspect-ratio: 1; }
+.tmr-ring svg { width: 100%; height: 100%; display: block; }
+.tmr-ring circle { fill: none; stroke-width: 12; }
+.ring-bg { stroke: var(--surface-2); }
+.ring-pour { stroke: color-mix(in srgb, var(--teal) 30%, transparent); stroke-linecap: butt; }
+.ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .1s linear; }
+.ring-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.ring-rem { font-size: clamp(2.2rem, 11vw, 3.2rem); font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.ring-lbl { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+.ring-tot { font-size: .9rem; color: var(--text-2); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.tmr-scale { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.jar { position: relative; width: 58px; height: 170px; border: 2px solid var(--border); border-top: 0; border-radius: 0 0 14px 14px; overflow: hidden; background: var(--surface); }
+.jar-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent)); transition: height .1s linear; }
+.tmr-scale.pouring .jar-fill { background: linear-gradient(180deg, color-mix(in srgb, var(--teal) 55%, transparent), var(--teal)); }
+.jar-mark { position: absolute; left: -2px; right: -2px; height: 0; border-top: 2px dashed var(--text); }
+.scale-read { font-variant-numeric: tabular-nums; font-size: 1.5rem; line-height: 1; }
+.tmr-instr { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; min-height: 58px; }
+.tmr-flow { min-height: 30px; margin: 8px 0; }
+.flow-pill { display: inline-block; background: color-mix(in srgb, var(--teal) 16%, var(--surface)); color: var(--teal); border-radius: 999px; padding: 5px 12px; font-size: .85rem; }
+.tmr-steps { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; }
+.tstep { border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; opacity: .7; }
+.tstep.on { opacity: 1; border-color: var(--accent); box-shadow: var(--shadow); }
+.tstep.done { opacity: .55; }
+.tstep-h { display: flex; gap: 8px; align-items: baseline; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.tstep-n { width: 20px; height: 20px; border-radius: 50%; background: var(--surface-2); display: inline-grid; place-items: center; font-size: .72rem; font-weight: 700; }
+.tstep.on .tstep-n { background: var(--accent); color: var(--accent-ink); }
+.tstep-t { color: var(--muted); min-width: 38px; }
+.tstep-desc { font-size: .78rem; color: var(--text-2); margin-top: 3px; }
+.tstep:not(.on) .tstep-desc { display: none; }
+.tbar { height: 4px; border-radius: 4px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+.tbar-fill { height: 100%; width: 0; background: var(--accent); border-radius: 4px; }
+.tmr-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; position: sticky; bottom: 0; background: var(--surface); padding-top: 6px; }
+.tmr-ctrl .btn { justify-content: center; }
+
+/* ---------- Leitura de rótulo ---------- */
+.scan-box { background: var(--surface-2); border-radius: 12px; padding: 10px; margin-bottom: 12px; }
+.scan-status { margin-top: 8px; font-size: .88rem; display: flex; align-items: center; gap: 8px; }
+.scan-status.ok { color: var(--ok); } .scan-status.err { color: var(--danger); }
+.spin { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.scanned { border-color: var(--teal) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 25%, transparent); }
+.ocr-text { white-space: pre-wrap; font-size: .78rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 180px; overflow: auto; }
+
+/* ---------- Cafeína ---------- */
+.meter { height: 6px; border-radius: 6px; background: var(--border); overflow: hidden; margin: 6px 0 2px; }
+.meter > div { height: 100%; background: var(--accent); border-radius: 6px; }
+svg.chart .cf-limiar { stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg.chart .cf-now { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+svg.chart .cf-bed { stroke: var(--text-2); stroke-width: 1.5; }
+svg.chart .cf-lbl { fill: var(--text-2); font-size: 11px; }
+svg.chart .cf-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+svg.chart .cf-dose { fill: var(--teal); stroke: var(--surface); stroke-width: 2; }
+svg.chart .cf-cross { stroke: var(--text-2); stroke-width: 1; }
+.quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.quick { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 12px; padding: 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; text-align: center; }
+.quick:active { transform: scale(.97); }
+.quick .qi { font-size: 1.4rem; } .quick .qn { font-size: .76rem; line-height: 1.2; } .quick .qm { font-size: .78rem; font-weight: 700; color: var(--accent); }
+.chk { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: .92rem; }
+.stat .badge { white-space: normal; margin-top: 4px; }
+.stat { min-width: 0; }

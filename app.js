@@ -164,6 +164,7 @@
         <div class="stat"><span class="lbl">Receitas calibradas</span><div class="hero-num">${calibradas}</div></div>
         <div class="stat"><span class="lbl">Tentativas até calibrar</span><div class="hero-num">${mediaTent}</div></div>
       </div>
+      ${hooks.home.map((fn) => fn()).join('')}
       <div class="row" style="margin-top:14px">
         <a class="btn primary" href="#/nova">＋ Nova extração</a>
         <a class="btn" href="#/graos?novo=1">Cadastrar grão</a>
@@ -252,7 +253,7 @@
         <button class="btn danger sm" id="del">Excluir</button>
         <button class="btn sm" id="dup">Duplicar como nova</button>
       </div>`;
-    $('#del').onclick = () => { if (confirmar('Excluir esta extração?')) { state.extracoes = state.extracoes.filter((e) => e.id !== x.id); save(); toast('Excluída'); go('#/diario'); } };
+    $('#del').onclick = () => { if (confirmar('Excluir esta extração?')) { state.extracoes = state.extracoes.filter((e) => e.id !== x.id); hooks.extracaoExcluida.forEach((fn) => fn(x)); save(); toast('Excluída'); go('#/diario'); } };
     $('#dup').onclick = () => go(`#/nova?from=${x.id}&copiar=1`);
   };
 
@@ -313,6 +314,7 @@
             <label class="field"><span class="lbl">Tempo de contato</span><input type="text" name="tempo" inputmode="numeric" placeholder="2:45 · 28 · 14h"><div class="help" id="hTempo"></div></label>
             <label class="field"><span class="lbl">TDS % (opcional)</span><input type="number" name="tds" inputmode="decimal" step="0.01" placeholder="refratômetro"></label>
           </div>
+          <button class="btn primary block" type="button" id="btnTimer" style="margin:4px 0 14px">⏱ Iniciar timer guiado</button>
           <div class="row between" style="margin-top:4px"><span class="lbl" style="margin:0">Despejos / ataques executados</span><div class="row" style="gap:6px"><button class="btn sm" type="button" id="pourPlano">Preencher pelo plano</button><button class="btn sm ghost" type="button" id="pourAdd">＋ linha</button></div></div>
           <div id="pours"></div>
           <div class="help">Tempo em que cada ataque começou e a água acumulada na balança ao fim dele. Ajuste para o que você realmente fez.</div>
@@ -330,6 +332,7 @@
           ${chipsSel('descritores', DB.descritores, [])}
           <div class="range-row" style="margin-top:12px"><span class="lbl">Nota (0–10)</span><input type="range" name="nota" min="0" max="10" step="0.5" value="7" oninput="this.nextElementSibling.value=this.value"><output>7</output></div>
           <label class="field"><span class="lbl">Observações</span><textarea name="obs" placeholder="bloom, despejos, canal, água usada…"></textarea></label>
+          <label class="field"><span class="lbl">Quanto você bebeu? (diário de cafeína)</span>${sel('bebido', [{ id: '1', nome: 'Tudo' }, { id: '0.5', nome: 'Metade' }, { id: '0.25', nome: 'Um quarto / prova' }, { id: '0', nome: 'Não bebi (só calibração)' }], String(state.config.bebidoPadrao != null ? state.config.bebidoPadrao : '1'))}<div class="help" id="hCafeina"></div></label>
         </div>
         <div class="row" style="margin-top:14px"><button class="btn primary block" type="submit">Salvar e diagnosticar</button></div>
       </form>`;
@@ -356,6 +359,20 @@
       tb.appendChild(tr);
     }
     $('#pourPlano').onclick = preencherPlano;
+    $('#btnTimer').onclick = () => {
+      const { g, m, md } = ctx();
+      let etapas = lerDespejos(f);
+      if (!etapas.length) { const rc = E.receita(m, +F('dose').value || m.dosePadrao, +F('water').value); etapas = rc ? rc.etapas : [{ t: 0, acumulado: +F('water').value, desc: '' }]; }
+      window.CafeTimer.open({ grao: g, metodo: m, moedor: md, dose: +F('dose').value, water: +F('water').value, tempC: +F('tempC').value, clicks: F('clicks').value, etapas }, (res) => {
+        if (res.tempoS) F('tempo').value = E.fmtTempo(res.tempoS).replace(' s', '').replace(' h', 'h');
+        if (res.etapas && res.etapas.length) $('#pours').innerHTML = tabelaReceita({ etapas: res.etapas }, m, true);
+        toast(`Tempo registrado: ${E.fmtTempo(res.tempoS)}${res.drenagemS ? ' · drenagem marcada' : ''}`);
+        F('tempo').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    };
+    const hintCafeina = () => { const h = $('#hCafeina'); if (!h || !window.CafeCafeina) return; const { g, m } = ctx(); const mg = window.CafeCafeina.estimarExtracao(g, m, +F('dose').value); h.textContent = `≈ ${Math.round(mg * (+F('bebido').value))} mg de cafeína (estimativa para ${F('dose').value || 0} g)`; };
+    ['dose', 'bebido', 'graoId', 'metodoId'].forEach((n) => F(n).addEventListener('change', hintCafeina)); F('dose').addEventListener('input', hintCafeina);
+    setTimeout(hintCafeina, 0);
     $('#pourAdd').onclick = addLinha;
     $('#pours').addEventListener('click', (e) => { if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); $$('#pours tr[data-row] td.n').forEach((td, i) => (td.textContent = i + 1)); } });
     function renderSugestao() {
@@ -432,11 +449,13 @@
         tempC: +F('tempC').value, tempoS: tempoS, tds: F('tds').value ? +F('tds').value : null,
         acidez: +F('acidez').value, docura: +F('docura').value, amargor: +F('amargor').value, corpo: +F('corpo').value, final: +F('final').value,
         sinais: chipsVal(f, 'sinais'), descritores: chipsVal(f, 'descritores'), nota: +F('nota').value, obs: F('obs').value.trim(),
-        despejos: lerDespejos(f)
+        despejos: lerDespejos(f), bebido: +F('bebido').value
       };
       if (E.isEspresso(m)) x.yieldG = x.water;
       x.diag = E.diagnose(x, m);
-      state.extracoes.push(x); save();
+      state.extracoes.push(x);
+      hooks.extracaoSalva.forEach((fn) => fn(x, g, m));
+      save();
       toast('Extração registrada');
       go(`#/extracao/${x.id}`);
     });
@@ -463,6 +482,11 @@
     const isNew = !g.id;
     modal(`
       <div class="sheet-head"><h2>${isNew ? 'Novo grão' : 'Editar grão'}</h2><button class="btn sm ghost" data-close>✕</button></div>
+      <div class="scan-box">
+        <label class="btn primary block" style="justify-content:center">📷 Ler rótulo com a câmera<input type="file" id="scanFile" accept="image/*" capture="environment" hidden></label>
+        <label class="btn sm ghost" style="margin-top:6px">🖼 Escolher foto da galeria<input type="file" id="scanFile2" accept="image/*" hidden></label>
+        <div id="scanStatus"></div>
+      </div>
       <form id="fGrao">
         <div class="form-grid">
           <label class="field full"><span class="lbl">Nome / lote *</span><input type="text" name="nome" value="${esc(g.nome || '')}" required placeholder="Ex.: Fazenda Santa Inês — Bourbon Amarelo"></label>
@@ -506,6 +530,35 @@
       });
       perfil();
       if (isNew) { const reg = DB.regiao[g.regiao]; $$('[data-chips="notas"] .chip', sheet).forEach((c) => c.classList.toggle('on', reg.notas.includes(c.dataset.v))); ['acidez', 'corpo', 'docura'].forEach((k) => { F(k).value = reg[k]; F(k).nextElementSibling.value = reg[k]; }); }
+      const onScan = async (e) => {
+        const file = e.target.files && e.target.files[0]; e.target.value = '';
+        if (!file || !window.CafeRotulo) return;
+        const st = $('#scanStatus', sheet);
+        st.innerHTML = `<div class="scan-status"><span class="spin"></span> <span id="scanMsg">Preparando imagem…</span></div>`;
+        try {
+          const res = await window.CafeRotulo.ler(file, (msg) => { const el = $('#scanMsg', sheet); if (el) el.textContent = msg; });
+          const preenchidos = aplicarCampos(res.campos);
+          st.innerHTML = `<div class="scan-status ok">✓ ${res.fonte === 'ia' ? 'Lido pela IA' : 'Lido por OCR local'} · ${preenchidos.length ? 'preenchido: ' + preenchidos.join(', ') : 'nenhum campo reconhecido'}. Confira antes de salvar.</div>${res.texto ? `<details class="recipe" style="margin-top:6px"><summary>Texto lido</summary><pre class="ocr-text">${esc(res.texto)}</pre></details>` : ''}${res.aviso ? `<div class="help">${esc(res.aviso)}</div>` : ''}`;
+        } catch (err) {
+          st.innerHTML = `<div class="scan-status err">✕ ${esc(err.message || String(err))}</div>`;
+        }
+      };
+      $('#scanFile', sheet).addEventListener('change', onScan);
+      $('#scanFile2', sheet).addEventListener('change', onScan);
+      function aplicarCampos(c) {
+        const feitos = [];
+        const set = (name, val, rotulo) => { if (val == null || val === '' || !F(name)) return; F(name).value = val; F(name).classList.add('scanned'); feitos.push(rotulo); };
+        if (c.regiao && DB.regiao[c.regiao]) { F('regiao').value = c.regiao; F('regiao').dispatchEvent(new Event('change')); F('regiao').classList.add('scanned'); feitos.push('região'); }
+        if (!F('nome').value.trim()) set('nome', c.nome, 'nome'); set('produtor', c.produtor, 'produtor'); set('torrefacao', c.torrefacao, 'torrefação');
+        set('variedade', c.variedade, 'variedade');
+        if (c.processo && DB.processo[c.processo]) set('processo', c.processo, 'processo');
+        if (c.torra && DB.torra[c.torra]) set('torra', c.torra, 'torra');
+        if (c.especie) set('especie', c.especie, 'espécie');
+        set('dataTorra', c.dataTorra, 'data da torra'); set('altitude', c.altitude || '', 'altitude'); set('pontuacao', c.pontuacao, 'pontuação');
+        if (c.notas && c.notas.length) { $$('[data-chips="notas"] .chip', sheet).forEach((ch) => ch.classList.toggle('on', c.notas.includes(ch.dataset.v))); feitos.push('notas'); }
+        if (c.obs) { F('obs').value = (F('obs').value ? F('obs').value + '\n' : '') + c.obs; feitos.push('observações'); }
+        return feitos;
+      }
       const del = $('#delGrao', sheet);
       if (del) del.onclick = () => { if (confirmar('Excluir o grão e TODAS as suas extrações?')) { state.graos = state.graos.filter((x) => x.id !== g.id); state.extracoes = state.extracoes.filter((x) => x.graoId !== g.id); save(); closeModal(); toast('Grão excluído'); go('#/graos'); } };
       f.addEventListener('submit', (e) => {
@@ -621,6 +674,7 @@
     view.innerHTML = `<div class="list">
       <div class="item" onclick="location.hash='#/moedores'"><div class="ico">⚙️</div><div><div class="t">Moedores</div><div class="s">${state.moedores.length} cadastrado(s) · escalas de cliques e referências</div></div><div>›</div></div>
       <div class="item" onclick="location.hash='#/biblioteca'"><div class="ico">📚</div><div><div class="t">Biblioteca de terroirs</div><div class="s">Regiões, processos, torras, métodos e indicações</div></div><div>›</div></div>
+      ${hooks.mais.map((fn) => fn()).join('')}
       <div class="item" onclick="location.hash='#/ajustes'"><div class="ico">💾</div><div><div class="t">Backup e ajustes</div><div class="s">Exportar/importar dados, instalar no celular</div></div><div>›</div></div>
     </div>`;
   };
@@ -722,6 +776,7 @@
         ${isFile ? '<p class="text-2">Você abriu o arquivo diretamente (file://). Funciona, mas para instalar como app é preciso servir a pasta por HTTP/HTTPS — veja o README (GitHub Pages ou um servidor local na mesma rede Wi-Fi).</p>' : ''}
         <button class="btn primary" id="btnInstall" ${deferredInstall ? '' : 'hidden'}>Instalar aplicativo</button>
         <p class="text-2" style="margin-top:8px"><strong>Android (Chrome):</strong> menu ⋮ → “Instalar aplicativo” ou “Adicionar à tela inicial”.<br><strong>iPhone (Safari):</strong> botão Compartilhar → “Adicionar à Tela de Início”.</p></div>
+      <div id="ajustesModulos"></div>
       <div class="card" style="margin-top:12px"><h3>Meus cafés e moedores</h3><p class="text-2">O app vem com o catálogo dos cafés que você comprou (Maeda, Encantos do Café, Net Cafés, Colheita) e com o Starseeker E55 Pro e o Kingrinder K2. Se você excluiu algum e quer de volta, reimporte: só entra o que estiver faltando.</p><button class="btn" id="reimport">Reimportar catálogo</button></div>
       <div class="card" style="margin-top:12px"><h3>Dados de exemplo</h3><p class="text-2">Carrega 1 moedor, 2 grãos e uma sequência de extrações para você ver o motor funcionando.</p><button class="btn" id="demo">Carregar exemplo</button></div>
       <div class="card" style="margin-top:12px"><h3>Zona de perigo</h3><button class="btn danger" id="wipe">Apagar todos os dados</button></div>
@@ -734,6 +789,7 @@
     $('#alvo').onchange = (e) => { state.config.notaAlvo = +e.target.value || 8; save(); toast('Salvo'); };
     $('#tema').onchange = (e) => { state.config.tema = e.target.value; save(); applyTheme(); };
     $('#btnInstall').onclick = async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $('#btnInstall').hidden = true; };
+    hooks.ajustes.forEach((fn) => fn($('#ajustesModulos')));
     $('#reimport').onclick = () => { const r = seedCatalogo(true); toast(`Importados: ${r.graos} grão(s), ${r.moedores} moedor(es)`); };
     $('#demo').onclick = () => { if (state.extracoes.length && !confirmar('Adicionar dados de exemplo aos dados atuais?')) return; carregarDemo(); toast('Exemplo carregado'); go('#/inicio'); };
     $('#wipe').onclick = () => { if (confirmar('Apagar TODOS os dados deste aparelho? Não há como desfazer.')) { localStorage.removeItem(KEY); state = load(); toast('Dados apagados'); go('#/inicio'); } };
@@ -761,9 +817,14 @@
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { /* sem SW (ex.: http em rede local) */ }));
   }
 
-  /* ---------------- boot ---------------- */
-  applyTheme();
-  seedCatalogo(false);
-  render();
-  window.CafeLab = { state: () => state, save, carregarDemo };
+  /* ---------------- API para módulos (timer, rótulo, cafeína) ---------------- */
+  const hooks = { home: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [] };
+  window.CafeLab = {
+    state: () => state, save, carregarDemo, routes, render, go, toast, modal, closeModal, esc, uid, $, $$, fmtData, parseTempo,
+    grao, moedor, metodo, extracao, BEAN, hooks, nowLocal
+  };
+
+  /* ---------------- boot (após os módulos registrarem rotas) ---------------- */
+  function boot() { applyTheme(); seedCatalogo(false); render(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 })();

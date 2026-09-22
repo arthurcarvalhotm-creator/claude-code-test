@@ -295,7 +295,7 @@ window.CAFE_DB = (function () {
    * de água por grama de café (espresso: bebida/dose). */
   const metodos = [
     {
-      id: 'espresso', nome: 'Espresso', tipo: 'pressão', icone: '☕',
+      id: 'espresso', nome: 'Espresso', tipo: 'pressão', icone: '☕', fluxo: 2,
       ratio: { min: 1.6, max: 3.0, padrao: 2.0 }, dosePadrao: 18,
       tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 24, max: 34, padrao: 28 },
       grind: 1, microns: [200, 350], grindDesc: 'Fina (açúcar refinado)',
@@ -303,7 +303,7 @@ window.CAFE_DB = (function () {
       receita: 'Dose 18 g → bebida 36–40 g em 25–30 s. Pré-infusão 3–8 s. Ajuste moagem para tempo; razão para intensidade/corpo.'
     },
     {
-      id: 'moka', nome: 'Moka (cafeteira italiana)', tipo: 'pressão', icone: '🫖',
+      id: 'moka', nome: 'Moka (cafeteira italiana)', tipo: 'pressão', icone: '🫖', fluxo: 3,
       ratio: { min: 8, max: 11, padrao: 9.5 }, dosePadrao: 15,
       tempC: { min: 85, max: 95, padrao: 90 }, tempoS: { min: 60, max: 150, padrao: 100 },
       grind: 2, microns: [350, 500], grindDesc: 'Fina-média (sal fino)',
@@ -311,7 +311,7 @@ window.CAFE_DB = (function () {
       receita: 'Água pré-aquecida na caldeira até a válvula, café nivelado sem compactar, fogo baixo. Retire do fogo ao ouvir o borbulhar.'
     },
     {
-      id: 'v60', nome: 'Hario V60', tipo: 'filtrado', icone: '🔻',
+      id: 'v60', nome: 'Hario V60', tipo: 'filtrado', icone: '🔻', fluxo: 6,
       ratio: { min: 14, max: 18, padrao: 16 }, dosePadrao: 15,
       tempC: { min: 88, max: 97, padrao: 93 }, tempoS: { min: 150, max: 220, padrao: 180 },
       grind: 3, microns: [600, 800], grindDesc: 'Média-fina (areia grossa)',
@@ -319,7 +319,7 @@ window.CAFE_DB = (function () {
       receita: '15 g / 240 g. Bloom 45 g por 40 s, 2–3 despejos até 240 g. Drenagem total em 2:45–3:15.'
     },
     {
-      id: 'kalita', nome: 'Kalita Wave', tipo: 'filtrado', icone: '〰️',
+      id: 'kalita', nome: 'Kalita Wave', tipo: 'filtrado', icone: '〰️', fluxo: 5,
       ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 18,
       tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 180, max: 240, padrao: 205 },
       grind: 4, microns: [700, 900], grindDesc: 'Média (areia)',
@@ -327,7 +327,7 @@ window.CAFE_DB = (function () {
       receita: '18 g / 280 g. Bloom 50 g/35 s, despejos em pulsos de 50–60 g. 3:15–3:45.'
     },
     {
-      id: 'melitta', nome: 'Melitta (1x2 / 1x4 / 102)', tipo: 'filtrado', icone: '🧺',
+      id: 'melitta', nome: 'Melitta (1x2 / 1x4 / 102)', tipo: 'filtrado', icone: '🧺', fluxo: 4,
       ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 20,
       tempC: { min: 88, max: 95, padrao: 92 }, tempoS: { min: 180, max: 260, padrao: 220 },
       grind: 4, microns: [700, 950], grindDesc: 'Média (areia)',
@@ -335,7 +335,7 @@ window.CAFE_DB = (function () {
       receita: '20 g / 310 g. Bloom 60 g/40 s, despejos contínuos suaves. 3:30–4:15.'
     },
     {
-      id: 'chemex', nome: 'Chemex', tipo: 'filtrado', icone: '⏳',
+      id: 'chemex', nome: 'Chemex', tipo: 'filtrado', icone: '⏳', fluxo: 7,
       ratio: { min: 14, max: 17, padrao: 16 }, dosePadrao: 30,
       tempC: { min: 90, max: 97, padrao: 94 }, tempoS: { min: 210, max: 300, padrao: 250 },
       grind: 5, microns: [800, 1000], grindDesc: 'Média-grossa',
@@ -343,7 +343,7 @@ window.CAFE_DB = (function () {
       receita: '30 g / 500 g. Bloom 80 g/45 s, despejos em espiral até 500 g. 4:00–5:00.'
     },
     {
-      id: 'clever', nome: 'Clever Dripper (imersão + filtro)', tipo: 'imersão', icone: '🪣',
+      id: 'clever', nome: 'Clever Dripper (imersão + filtro)', tipo: 'imersão', icone: '🪣', fluxo: 10,
       ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 18,
       tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 180, max: 300, padrao: 240 },
       grind: 4, microns: [700, 900], grindDesc: 'Média',
@@ -351,7 +351,7 @@ window.CAFE_DB = (function () {
       receita: '18 g / 280 g. Água antes do café, mexa, tampe, 2:30–3:30, drene sobre a xícara (~1 min).'
     },
     {
-      id: 'aeropress', nome: 'AeroPress', tipo: 'imersão', icone: '🧪',
+      id: 'aeropress', nome: 'AeroPress', tipo: 'imersão', icone: '🧪', fluxo: 10,
       ratio: { min: 11, max: 17, padrao: 14 }, dosePadrao: 15,
       tempC: { min: 80, max: 95, padrao: 90 }, tempoS: { min: 75, max: 180, padrao: 120 },
       grind: 3, microns: [500, 750], grindDesc: 'Média-fina',
@@ -359,7 +359,7 @@ window.CAFE_DB = (function () {
       receita: '15 g / 210 g invertido ou padrão. Mexa 10 s, 1:30 de imersão, pressione em 30 s.'
     },
     {
-      id: 'prensa-francesa', nome: 'Prensa Francesa', tipo: 'imersão', icone: '🫙',
+      id: 'prensa-francesa', nome: 'Prensa Francesa', tipo: 'imersão', icone: '🫙', fluxo: 12,
       ratio: { min: 12, max: 16, padrao: 14 }, dosePadrao: 30,
       tempC: { min: 88, max: 95, padrao: 92 }, tempoS: { min: 240, max: 480, padrao: 300 },
       grind: 6, microns: [900, 1200], grindDesc: 'Grossa (sal grosso)',
@@ -367,7 +367,7 @@ window.CAFE_DB = (function () {
       receita: '30 g / 450 g. 4 min, quebre a crosta, retire a espuma, aguarde mais 4–5 min e pressione só até a superfície.'
     },
     {
-      id: 'coador-pano', nome: 'Coador de pano', tipo: 'filtrado', icone: '🧦',
+      id: 'coador-pano', nome: 'Coador de pano', tipo: 'filtrado', icone: '🧦', fluxo: 5,
       ratio: { min: 13, max: 16, padrao: 14.5 }, dosePadrao: 25,
       tempC: { min: 86, max: 93, padrao: 90 }, tempoS: { min: 150, max: 240, padrao: 190 },
       grind: 4, microns: [700, 900], grindDesc: 'Média',
@@ -375,7 +375,7 @@ window.CAFE_DB = (function () {
       receita: '25 g / 360 g. Escalde o pano, bloom 60 g/30 s, despejos contínuos. Enxágue o pano sem sabão e guarde úmido na geladeira.'
     },
     {
-      id: 'cold-brew', nome: 'Cold brew', tipo: 'imersão', icone: '🧊',
+      id: 'cold-brew', nome: 'Cold brew', tipo: 'imersão', icone: '🧊', fluxo: 20,
       ratio: { min: 6, max: 12, padrao: 9 }, dosePadrao: 100,
       tempC: { min: 4, max: 25, padrao: 20 }, tempoS: { min: 28800, max: 72000, padrao: 50400 },
       grind: 6, microns: [900, 1200], grindDesc: 'Grossa',

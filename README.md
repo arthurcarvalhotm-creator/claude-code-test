@@ -13,12 +13,15 @@ Diário técnico de extrações e calibração de cafés especiais. Aplicação 
 - **Moedores**: escala de cliques/sub-cliques, direção (menor = fino), referência por método; modelos prontos (Timemore, 1Zpresso, Comandante, Hario, Baratza Encore, Fellow Ode, DF64/Mignon).
 - **Receitas de despejo** por método (bloom, cada ataque com tempo e água acumulada, drenagem), escaladas para a dose e a razão da extração. No registro você anota o que realmente fez em cada despejo.
 - **Catálogo dos cafés comprados** já cadastrado em Grãos na primeira abertura: Maeda Coffee (Kit Inicial e Kit Exóticos), Encantos do Café (Kit Degustação: Agrado, Desejo, Raro, Sensação), Net Cafés (Caparaó: Caramelo & Chocolate, Frutas Amarelas, Frutas Vermelhas) e Colheita Café (Pra Beber de Balde, Halls de Cereja, Blend da Copa, Castanhas & Caramelo). Os moedores **Starseeker E55 Pro** e **Kingrinder K2** também vêm pré-cadastrados com referências de cliques por método.
+- **Timer guiado de preparo**: contagem regressiva por etapa, anel de progresso, balança-alvo subindo na vazão ideal de cada método (ex.: 6 g/s na V60), aviso sonoro e vibração 3-2-1, tela sempre ligada, botão para adiantar a etapa e marcação do fim da drenagem. Ao concluir, o tempo total e os horários reais de cada despejo vão para o registro da extração.
+- **Leitura de rótulos pela câmera**: no cadastro de grão, fotografe o pacote. Com uma chave da API da Anthropic (Mais → Backup e ajustes), o Claude lê a foto e preenche produtor, região, variedade, processo, torra, altitude, data da torra, pontuação e notas, mapeados para o banco nativo. Sem chave, um OCR local (Tesseract.js, baixado na primeira vez) faz uma leitura mais simples. A chave fica só no aparelho e não entra no backup. O SDK oficial da Anthropic está empacotado em `vendor/`.
+- **Cafeína e sono**: diário de cafeína com lançamentos rápidos (cafeteria, energético, chá, chimarrão…) e registro automático das extrações que você bebeu. Um modelo farmacocinético de um compartimento, ajustado por peso, idade, sensibilidade, fumo, anticoncepcional e gestação, projeta a curva no corpo, a quantidade na hora de dormir e o último horário seguro para um café. Estimativa educativa, não é orientação médica.
 - **Backup** em JSON (exportar/importar/copiar). Os dados ficam apenas no aparelho.
 
 ## Como rodar
 
 ### No computador
-Abra `index.html` no navegador (duplo clique). Tudo funciona a partir de `file://`.
+Abra `index.html` no navegador (duplo clique). Quase tudo funciona a partir de `file://`; a leitura de rótulos por IA exige servir a pasta por HTTP(S), como descrito abaixo.
 
 ### No smartphone, “como um app”
 Para instalar (ícone na tela inicial, tela cheia, offline), o navegador exige que a pasta seja servida por HTTP(S). Duas opções:
@@ -46,6 +49,10 @@ Em **Mais → Backup e ajustes → Carregar exemplo** você vê o motor funciona
 | `data.js` | Banco nativo: terroirs, processos, torras, métodos, sinais, moedores-modelo |
 | `engine.js` | Motor: ponto de partida, diagnóstico, recomendação, status de calibração |
 | `app.js` | Interface, rotas, formulários, gráficos SVG, backup, PWA |
+| `timer.js` | Timer guiado de preparo |
+| `rotulo.js` | Leitura de rótulos (Claude + OCR local) |
+| `cafeina.js` | Diário de cafeína e modelo farmacocinético |
+| `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic (0.128.0) empacotado para navegador |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Instalação como app e cache offline |
 
 ## Como o motor decide
