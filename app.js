@@ -41,6 +41,12 @@
       });
       state.config.moedoresVersao = 2; save();
     }
+    if ((state.config.moedoresVersao || 0) < 3) { // E55 Pro recalibrado pelo uso real
+      const mm = DB.moedoresModelo.find((x) => x.id === 'starseeker-e55-pro');
+      const m = state.moedores.find((x) => x.modeloId === mm.id);
+      if (m) Object.assign(m, { max: mm.max, passo: mm.passo, refs: { ...mm.refs }, obs: mm.obs });
+      state.config.moedoresVersao = 3; save();
+    }
     if (!state.config.estoqueMigrado) {
       state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
       state.config.estoqueMigrado = true; save();
