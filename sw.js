@@ -1,22 +1,42 @@
-/* Service worker: cache-first para funcionar offline depois da primeira visita. */
-const CACHE = 'cafelab-v4';
-const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './mascote.js', './latte.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
+/* Service worker do Laboratório de Cafeteria.
+ * Estratégia: REDE PRIMEIRO para os arquivos do app (sempre pega a versão
+ * publicada quando há internet) e CACHE como reserva para funcionar offline.
+ * Troque VERSAO a cada publicação para forçar a atualização nos aparelhos. */
+const VERSAO = '2026-09-23.1';
+const CACHE = 'cafelab-' + VERSAO;
+const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './mascote.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './latte.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' ignora o cache HTTP do navegador/CDN e baixa os arquivos novos
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const antigos = (await caches.keys()).filter((k) => k !== CACHE);
+    await Promise.all(antigos.map((k) => caches.delete(k)));
+    await self.clients.claim();
+    // substituiu uma versão anterior: recarrega as telas abertas para já mostrar a nova
+    if (antigos.length) {
+      const janelas = await self.clients.matchAll({ type: 'window' });
+      janelas.forEach((c) => { try { c.navigate(c.url); } catch (err) { /* navegador sem suporte */ } });
+    }
+  })());
 });
+self.addEventListener('message', (e) => { if (e.data === 'versao' && e.source) e.source.postMessage({ versao: VERSAO }); });
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
-  if (new URL(e.request.url).hostname.endsWith('anthropic.com')) return;
-  e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy));
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // APIs e CDNs: direto na rede
+  e.respondWith((async () => {
+    try {
+      const res = await fetch(req, { cache: 'no-cache' }); // revalida com o servidor
+      if (res && res.ok) { const copia = res.clone(); caches.open(CACHE).then((c) => c.put(req, copia)); }
       return res;
-    }).catch(() => caches.match('./index.html')))
-  );
+    } catch (err) {
+      const hit = await caches.match(req, { ignoreSearch: true });
+      return hit || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error());
+    }
+  })());
 });

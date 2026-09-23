@@ -86,4 +86,10 @@ As chaves ficam só no aparelho. Como o app roda inteiro no navegador, qualquer 
 2. Em *Build and deployment*, escolha **Deploy from a branch**, selecione a branch (por exemplo `main`, depois de fazer o merge) e a pasta **/ (root)**. Salve.
 3. Em um ou dois minutos o endereço `https://<seu-usuario>.github.io/<repositório>/` fica no ar. Abra no celular e use *Instalar aplicativo* (Android) ou *Compartilhar → Adicionar à Tela de Início* (iPhone).
 
-Para mudar algo você mesmo: edite o arquivo no GitHub (ícone de lápis) e faça *Commit*. O Pages publica a nova versão sozinho. No celular, feche e reabra o app duas vezes para o cache offline pegar a atualização.
+Para mudar algo você mesmo: edite o arquivo no GitHub (ícone de lápis) e faça *Commit*. O Pages publica a nova versão em um ou dois minutos.
+
+### Atualizações no celular
+
+O app busca os arquivos na rede primeiro e só usa o cache offline quando está sem internet. Ao abrir com internet, uma versão nova é instalada e a tela recarrega sozinha. A versão instalada aparece em **Mais → Backup e ajustes → Versão do app**, junto com o botão **Forçar atualização**, que limpa o cache sem apagar seus dados.
+
+Ao publicar mudanças, troque o valor de `VERSAO` no início do `sw.js` (por exemplo `2026-09-24.1`). É isso que avisa os aparelhos que há uma versão nova.

@@ -850,7 +850,8 @@
       <div class="card" style="margin-top:12px"><h3>Meus cafés e moedores</h3><p class="text-2">O app vem com o catálogo dos cafés que você comprou (Maeda, Encantos do Café, Net Cafés, Colheita) e com o Starseeker E55 Pro e o Kingrinder K2. Se você excluiu algum e quer de volta, reimporte: só entra o que estiver faltando.</p><button class="btn" id="reimport">Reimportar catálogo</button></div>
       <div class="card" style="margin-top:12px"><h3>Dados de exemplo</h3><p class="text-2">Carrega 1 moedor, 2 grãos e uma sequência de extrações para você ver o motor funcionando.</p><button class="btn" id="demo">Carregar exemplo</button></div>
       <div class="card" style="margin-top:12px"><h3>Zona de perigo</h3><button class="btn danger" id="wipe">Apagar todos os dados</button></div>
-      <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · v1 · dados 100 % locais, sem rede.</small></p>`;
+      <div class="card" style="margin-top:12px"><h3>Versão do app</h3><p class="text-2">Versão instalada: <strong id="swVersao">${swVersao || (navigator.serviceWorker && navigator.serviceWorker.controller ? 'verificando…' : 'sem cache offline')}</strong>. O app se atualiza sozinho quando abre com internet. Se alguma novidade não aparecer, force a atualização: os seus dados (grãos, extrações, cafeína) não são apagados.</p><button class="btn" id="btnAtualizar">🔄 Forçar atualização</button></div>
+      <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · dados 100 % locais.</small></p>`;
     $('#exp').onclick = () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `cafelab-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove(); };
     $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(state)); toast('Copiado'); } catch (e) { toast('Não foi possível copiar'); } };
     const importar = (txt) => { try { const s = JSON.parse(txt); if (!s || !Array.isArray(s.graos) || !Array.isArray(s.extracoes)) throw new Error('formato'); if (!confirmar(`Importar ${s.graos.length} grão(s), ${(s.moedores || []).length} moedor(es) e ${s.extracoes.length} extração(ões)? Isso substitui os dados atuais.`)) return; state = { graos: s.graos, moedores: s.moedores || [], extracoes: s.extracoes, config: s.config || state.config }; save(); applyTheme(); toast('Backup importado'); go('#/inicio'); } catch (e) { toast('Arquivo inválido'); } };
@@ -860,6 +861,8 @@
     $('#tema').onchange = (e) => { state.config.tema = e.target.value; save(); applyTheme(); };
     $('#btnInstall').onclick = async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $('#btnInstall').hidden = true; };
     hooks.ajustes.forEach((fn) => fn($('#ajustesModulos')));
+    $('#btnAtualizar').onclick = () => { toast('Atualizando…'); forcarAtualizacao(); };
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('versao');
     $('#reimport').onclick = () => { const r = seedCatalogo(true); toast(`Importados: ${r.graos} grão(s), ${r.moedores} moedor(es)`); };
     $('#demo').onclick = () => { if (state.extracoes.length && !confirmar('Adicionar dados de exemplo aos dados atuais?')) return; carregarDemo(); toast('Exemplo carregado'); go('#/inicio'); };
     $('#wipe').onclick = () => { if (confirmar('Apagar TODOS os dados deste aparelho? Não há como desfazer.')) { localStorage.removeItem(KEY); state = load(); toast('Dados apagados'); go('#/inicio'); } };
@@ -883,8 +886,25 @@
   }
 
   /* ---------------- PWA ---------------- */
+  let swVersao = '';
+  async function forcarAtualizacao() {
+    try {
+      if ('serviceWorker' in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((r) => r.unregister())); }
+      if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); }
+    } catch (e) { /* segue para o reload */ }
+    location.replace(location.pathname + '?v=' + Date.now() + location.hash);
+  }
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { /* sem SW (ex.: http em rede local) */ }));
+    // recarrega uma vez quando uma versão nova assume o controle
+    let recarregou = false;
+    const tinhaControle = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinhaControle && !recarregou) { recarregou = true; location.reload(); } });
+    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.versao) { swVersao = e.data.versao; const el = document.getElementById('swVersao'); if (el) el.textContent = swVersao; } });
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('versao');
+    }).catch(() => { /* sem SW (ex.: http em rede local) */ }));
   }
 
   /* ---------------- API para módulos (timer, rótulo, cafeína) ---------------- */
