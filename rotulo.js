@@ -1,10 +1,12 @@
 /* =====================================================================
  * Laboratório de Cafeteria — Leitura de rótulos (câmera)
- * 1) Com chave da API Anthropic: Claude lê a foto e devolve JSON validado
- *    por schema (structured outputs), já mapeado para o banco nativo.
+ * 1) IA com visão, à escolha do usuário:
+ *    - Claude (API da Anthropic, SDK oficial empacotado em vendor/), ou
+ *    - Gemini (API do Google AI Studio, chamada REST direta).
+ *    Ambos devolvem JSON validado por schema, mapeado para o banco nativo.
  * 2) Sem chave: OCR local com Tesseract.js (carregado sob demanda) +
  *    interpretação por regras (regiões, processos, torras, variedades…).
- * A chave fica só neste aparelho (localStorage) e nunca entra no backup.
+ * As chaves ficam só neste aparelho (localStorage) e nunca entram no backup.
  * ===================================================================== */
 (function () {
   'use strict';
@@ -22,6 +24,26 @@
   const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* */ } };
   const getKey = () => lsGet(KEY_API);
   const getModel = () => lsGet(KEY_MODEL) || MODELOS[0].id;
+  /* Gemini */
+  const KEY_PROV = 'cafelab.ia.provedor';
+  const KEY_GEM = 'cafelab.gemini.key';
+  const KEY_GEM_MODEL = 'cafelab.gemini.model';
+  const MODELOS_GEMINI = [
+    { id: 'gemini-3.8-flash', nome: 'Gemini 3.8 Flash (padrão)' },
+    { id: 'gemini-3.7-flash', nome: 'Gemini 3.7 Flash' },
+    { id: 'gemini-3.1-flash-lite', nome: 'Gemini 3.1 Flash-Lite (mais barato)' }
+  ];
+  const getGemKey = () => lsGet(KEY_GEM);
+  const getGemModel = () => lsGet(KEY_GEM_MODEL) || MODELOS_GEMINI[0].id;
+  /* provedor ativo: o escolhido, se tiver chave; senão o que tiver chave */
+  function provedor() {
+    const escolhido = lsGet(KEY_PROV);
+    if (escolhido === 'gemini' && getGemKey()) return 'gemini';
+    if (escolhido === 'anthropic' && getKey()) return 'anthropic';
+    if (getKey()) return 'anthropic';
+    if (getGemKey()) return 'gemini';
+    return 'ocr';
+  }
 
   /* ---------- imagem: reduz para ~1568 px, JPEG ---------- */
   function carregarImagem(file) {
@@ -121,19 +143,68 @@ Ids de torra: ${torras}.`;
     if (resp.stop_reason === 'refusal') throw new Error('A IA não processou esta imagem. Tente outra foto ou use o OCR local (remova a chave).');
     if (resp.stop_reason === 'max_tokens') throw new Error('Resposta da IA incompleta. Tente novamente.');
     const txt = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    return mapear(txt, 'Claude', resp.model && resp.model !== model ? `Respondido por ${resp.model} (fallback).` : '');
+  }
+
+  /* Converte o JSON da IA (Claude ou Gemini) nos campos do formulário */
+  function mapear(txt, quem, aviso) {
     let j;
-    try { j = JSON.parse(txt); } catch (e) { throw new Error('A IA devolveu um formato inesperado. Tente novamente.'); }
+    try { j = JSON.parse(String(txt).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) { throw new Error('A IA devolveu um formato inesperado. Tente novamente.'); }
+    const ok = (v, tabela) => (v && tabela[v] ? v : '');
     const obs = [j.notas_originais && j.notas_originais.length ? 'Notas do rótulo: ' + j.notas_originais.join(', ') : '', j.observacoes].filter(Boolean).join(' · ');
     return {
-      fonte: 'ia',
+      fonte: 'ia', quem,
       texto: j.texto_lido || '',
       campos: {
-        nome: j.nome, torrefacao: j.torrefacao, produtor: j.produtor, regiao: j.regiao, variedade: j.variedade,
-        processo: j.processo, torra: j.torra, especie: j.especie, altitude: j.altitude_m || '', dataTorra: /^\d{4}-\d{2}-\d{2}$/.test(j.data_torra || '') ? j.data_torra : '',
+        nome: j.nome, torrefacao: j.torrefacao, produtor: j.produtor, regiao: ok(j.regiao, DB.regiao), variedade: j.variedade,
+        processo: ok(j.processo, DB.processo), torra: ok(j.torra, DB.torra), especie: ['arabica', 'canephora', 'blend'].includes(j.especie) ? j.especie : '',
+        altitude: +j.altitude_m || '', dataTorra: /^\d{4}-\d{2}-\d{2}$/.test(j.data_torra || '') ? j.data_torra : '',
         pontuacao: j.pontuacao, notas: (j.notas || []).filter((n) => DB.descritores.includes(n)), obs
       },
-      aviso: resp.model && resp.model !== model ? `Respondido por ${resp.model} (fallback).` : ''
+      aviso: aviso || ''
     };
+  }
+
+  /* ---------- Gemini (Google AI Studio, REST) ---------- */
+  async function lerComGemini(canvas, progresso) {
+    progresso('Enviando foto para o Gemini…');
+    const model = getGemModel();
+    const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const schema = JSON.parse(JSON.stringify(SCHEMA));
+    delete schema.additionalProperties;
+    const corpo = (comSchema) => ({
+      contents: [{ role: 'user', parts: [
+        { inline_data: { mime_type: 'image/jpeg', data } },
+        { text: promptClaude() + (comSchema ? '' : '\n\nResponda somente com um objeto JSON com estas chaves: ' + Object.keys(SCHEMA.properties).join(', ') + '.') }
+      ] }],
+      generationConfig: Object.assign({ responseMimeType: 'application/json', temperature: 0.1 }, comSchema ? { responseJsonSchema: schema } : {})
+    });
+    const chamar = async (comSchema) => {
+      let r;
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getGemKey() }, body: JSON.stringify(corpo(comSchema))
+        });
+      } catch (e) { throw new Error('Sem conexão com a API do Gemini. Verifique a internet.'); }
+      const j = await r.json().catch(() => ({}));
+      return { r, j };
+    };
+    let { r, j } = await chamar(true);
+    // modelos/versões que não aceitam responseJsonSchema: tenta de novo só com JSON no prompt
+    if (r.status === 400 && /responseJsonSchema|response_json_schema|schema/i.test(JSON.stringify(j))) ({ r, j } = await chamar(false));
+    if (!r.ok) {
+      const msg = (j.error && j.error.message) || r.statusText;
+      if (r.status === 400 && /API key/i.test(msg)) throw new Error('Chave do Gemini inválida. Confira em Mais → Backup e ajustes.');
+      if (r.status === 403) throw new Error('A chave do Gemini não tem acesso a este modelo ou à API. Confira no Google AI Studio.');
+      if (r.status === 404) throw new Error(`Modelo "${model}" não encontrado. Escolha outro nos ajustes.`);
+      if (r.status === 429) throw new Error('Limite de uso do Gemini atingido. Tente de novo em instantes.');
+      throw new Error(`Erro do Gemini (${r.status}): ${String(msg).slice(0, 200)}`);
+    }
+    const cand = (j.candidates || [])[0];
+    if (!cand) throw new Error('O Gemini não processou esta imagem' + (j.promptFeedback && j.promptFeedback.blockReason ? ` (${j.promptFeedback.blockReason})` : '') + '.');
+    if (cand.finishReason && !['STOP', 'MAX_TOKENS'].includes(cand.finishReason)) throw new Error(`O Gemini interrompeu a resposta (${cand.finishReason}). Tente outra foto.`);
+    const txt = ((cand.content && cand.content.parts) || []).map((p) => p.text || '').join('');
+    return mapear(txt, 'Gemini', '');
   }
 
   /* ---------- OCR local ---------- */
@@ -217,7 +288,9 @@ Ids de torra: ${torras}.`;
   async function ler(file, progresso) {
     progresso = progresso || (() => {});
     const img = await carregarImagem(file);
-    if (getKey()) return lerComClaude(redimensionar(img, 1568, false), progresso);
+    const prov = provedor();
+    if (prov === 'anthropic') return lerComClaude(redimensionar(img, 1568, false), progresso);
+    if (prov === 'gemini') return lerComGemini(redimensionar(img, 1568, false), progresso);
     return lerComOCR(redimensionar(img, 2000, true), progresso);
   }
 
@@ -226,17 +299,42 @@ Ids de torra: ${torras}.`;
     const lab = window.CafeLab;
     const div = document.createElement('div');
     div.className = 'card'; div.style.marginTop = '12px';
-    const tem = !!getKey();
+    const temA = !!getKey(), temG = !!getGemKey(), prov = provedor();
+    const escolhido = lsGet(KEY_PROV) || (temG && !temA ? 'gemini' : 'anthropic');
     div.innerHTML = `<h3>📷 Leitura de rótulos por IA</h3>
-      <p class="text-2">Com uma chave da API da Anthropic, a foto do pacote é lida pelo Claude e o cadastro do grão é preenchido automaticamente. Sem chave, o app usa um OCR local (menos preciso). A chave fica salva só neste aparelho, não vai para o backup e é enviada apenas para api.anthropic.com. Cada leitura consome créditos da sua conta Anthropic.</p>
-      <label class="field"><span class="lbl">Chave da API ${tem ? '<span class="badge ok">configurada</span>' : ''}</span><input type="password" id="apiKey" placeholder="${tem ? '•••••••• (deixe em branco para manter)' : 'sk-ant-…'}" autocomplete="off"></label>
-      <label class="field"><span class="lbl">Modelo</span><select id="apiModel">${MODELOS.map((m) => `<option value="${m.id}" ${m.id === getModel() ? 'selected' : ''}>${m.nome}</option>`).join('')}</select></label>
-      <div class="row"><button class="btn primary sm" id="apiSave">Salvar</button>${tem ? '<button class="btn sm danger" id="apiDel">Remover chave</button>' : ''}</div>`;
+      <p class="text-2">Fotografe o pacote e a IA preenche o cadastro do grão. Escolha o provedor e cole a chave dele. Sem nenhuma chave, o app usa um OCR local, menos preciso. As chaves ficam salvas só neste aparelho, não vão para o backup e só são enviadas para o provedor escolhido.</p>
+      <p><span class="badge ${prov === 'ocr' ? '' : 'ok'}">Em uso: ${prov === 'anthropic' ? 'Claude' : prov === 'gemini' ? 'Gemini' : 'OCR local'}</span></p>
+      <label class="field"><span class="lbl">Provedor</span><select id="iaProv"><option value="anthropic" ${escolhido === 'anthropic' ? 'selected' : ''}>Claude (Anthropic)</option><option value="gemini" ${escolhido === 'gemini' ? 'selected' : ''}>Gemini (Google)</option></select></label>
+      <div data-prov="anthropic">
+        <label class="field"><span class="lbl">Chave da API Anthropic ${temA ? '<span class="badge ok">configurada</span>' : ''}</span><input type="password" id="apiKey" placeholder="${temA ? '•••••••• (deixe em branco para manter)' : 'sk-ant-…'}" autocomplete="off"><div class="help">Crie em console.anthropic.com → API Keys. Cobrado por uso.</div></label>
+        <label class="field"><span class="lbl">Modelo</span><select id="apiModel">${MODELOS.map((m) => `<option value="${m.id}" ${m.id === getModel() ? 'selected' : ''}>${m.nome}</option>`).join('')}</select></label>
+      </div>
+      <div data-prov="gemini">
+        <label class="field"><span class="lbl">Chave da API Gemini ${temG ? '<span class="badge ok">configurada</span>' : ''}</span><input type="password" id="gemKey" placeholder="${temG ? '•••••••• (deixe em branco para manter)' : 'AIza…'}" autocomplete="off"><div class="help">Crie em aistudio.google.com → Get API key. Há cota gratuita; no plano gratuito o Google pode usar as imagens enviadas para melhorar os modelos.</div></label>
+        <label class="field"><span class="lbl">Modelo</span><select id="gemModelSel">${MODELOS_GEMINI.map((m) => `<option value="${m.id}" ${m.id === getGemModel() ? 'selected' : ''}>${m.nome}</option>`).join('')}<option value="_outro" ${MODELOS_GEMINI.some((m) => m.id === getGemModel()) ? '' : 'selected'}>Outro (digitar)</option></select></label>
+        <label class="field" id="gemOutroWrap"><span class="lbl">Id do modelo</span><input type="text" id="gemModel" value="${getGemModel()}" placeholder="ex.: gemini-3.8-flash"><div class="help">Use se o Google lançar um modelo novo ou aposentar um da lista.</div></label>
+      </div>
+      <div class="row"><button class="btn primary sm" id="apiSave">Salvar</button>${temA ? '<button class="btn sm danger" id="apiDel">Remover chave Anthropic</button>' : ''}${temG ? '<button class="btn sm danger" id="gemDel">Remover chave Gemini</button>' : ''}</div>`;
     root.appendChild(div);
-    div.querySelector('#apiSave').onclick = () => { const k = div.querySelector('#apiKey').value.trim(); if (k) lsSet(KEY_API, k); lsSet(KEY_MODEL, div.querySelector('#apiModel').value); lab.toast('Configuração da IA salva'); lab.render(); };
-    const del = div.querySelector('#apiDel'); if (del) del.onclick = () => { lsSet(KEY_API, ''); lab.toast('Chave removida'); lab.render(); };
+    const q = (x) => div.querySelector(x);
+    const sync = () => {
+      div.querySelectorAll('[data-prov]').forEach((el) => { el.hidden = el.dataset.prov !== q('#iaProv').value; });
+      q('#gemOutroWrap').hidden = q('#gemModelSel').value !== '_outro';
+    };
+    q('#iaProv').onchange = sync; q('#gemModelSel').onchange = sync; sync();
+    q('#apiSave').onclick = () => {
+      lsSet(KEY_PROV, q('#iaProv').value);
+      const k = q('#apiKey').value.trim(); if (k) lsSet(KEY_API, k);
+      lsSet(KEY_MODEL, q('#apiModel').value);
+      const g = q('#gemKey').value.trim(); if (g) lsSet(KEY_GEM, g);
+      const gm = q('#gemModelSel').value === '_outro' ? q('#gemModel').value.trim() : q('#gemModelSel').value;
+      if (gm) lsSet(KEY_GEM_MODEL, gm);
+      lab.toast('Configuração da IA salva'); lab.render();
+    };
+    const del = q('#apiDel'); if (del) del.onclick = () => { lsSet(KEY_API, ''); lab.toast('Chave Anthropic removida'); lab.render(); };
+    const delG = q('#gemDel'); if (delG) delG.onclick = () => { lsSet(KEY_GEM, ''); lab.toast('Chave Gemini removida'); lab.render(); };
   }
   window.CafeLab.hooks.ajustes.push(cardAjustes);
 
-  window.CafeRotulo = { ler, interpretar, SCHEMA, temChave: () => !!getKey() };
+  window.CafeRotulo = { ler, interpretar, SCHEMA, provedor, temChave: () => provedor() !== 'ocr' };
 })();

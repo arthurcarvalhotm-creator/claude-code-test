@@ -33,6 +33,10 @@
       state.config.catalogoVersao = DB.CATALOGO_VERSAO;
       save();
     }
+    if (!state.config.estoqueMigrado) {
+      state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
+      state.config.estoqueMigrado = true; save();
+    }
     return { graos: n, moedores: m };
   }
   const grao = (id) => state.graos.find((g) => g.id === id);
@@ -122,7 +126,7 @@
     view.innerHTML = '';
     const top = ['inicio', 'diario', 'nova', 'graos', 'mais'].includes(r.name) && !r.id;
     $('#btnBack').hidden = top;
-    $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === r.name || (r.name === 'grao' && a.dataset.route === 'graos') || (r.name === 'extracao' && a.dataset.route === 'diario') || (['moedores', 'biblioteca', 'ajustes'].includes(r.name) && a.dataset.route === 'mais')));
+    $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === r.name || (r.name === 'grao' && a.dataset.route === 'graos') || (r.name === 'extracao' && a.dataset.route === 'diario') || (['moedores', 'biblioteca', 'ajustes', 'cafeina', 'latte'].includes(r.name) && a.dataset.route === 'mais')));
     fn(view, r);
     bindChips(view);
     window.scrollTo(0, 0);
@@ -158,30 +162,84 @@
     const mediaTent = medias.length ? (medias.reduce((a, b) => a + b, 0) / medias.length).toFixed(1) : '—';
 
     view.innerHTML = `
-      <div class="stats">
-        <div class="stat"><span class="lbl">Extrações</span><div class="hero-num">${total}</div></div>
-        <div class="stat"><span class="lbl">Grãos ativos</span><div class="hero-num">${graosAtivos.length}</div></div>
-        <div class="stat"><span class="lbl">Receitas calibradas</span><div class="hero-num">${calibradas}</div></div>
-        <div class="stat"><span class="lbl">Tentativas até calibrar</span><div class="hero-num">${mediaTent}</div></div>
-      </div>
+      ${saudacaoPingo()}
+      <div class="qa-grid">${tilesInicio()}${hooks.tiles.map((fn) => fn()).join('')}</div>
       ${hooks.home.map((fn) => fn()).join('')}
       <div class="row" style="margin-top:14px">
         <a class="btn primary" href="#/nova">＋ Nova extração</a>
         <a class="btn" href="#/graos?novo=1">Cadastrar grão</a>
         ${state.moedores.length ? '' : '<a class="btn" href="#/moedores?novo=1">Cadastrar moedor</a>'}
       </div>
+      <div class="stats" style="margin-top:14px">
+        <div class="stat"><span class="lbl">Extrações</span><div class="hero-num">${total}</div></div>
+        <div class="stat"><span class="lbl">Grãos ativos</span><div class="hero-num">${graosAtivos.length}</div></div>
+        <div class="stat"><span class="lbl">Receitas calibradas</span><div class="hero-num">${calibradas}</div></div>
+        <div class="stat"><span class="lbl">Tentativas até calibrar</span><div class="hero-num">${mediaTent}</div></div>
+      </div>
       ${!state.graos.length ? `<div class="card soft" style="margin-top:16px"><h3>Como começar</h3><ol style="margin:0;padding-left:18px;color:var(--text-2)"><li>Cadastre seu <a href="#/moedores?novo=1">moedor</a> (escala de cliques).</li><li>Cadastre o <a href="#/graos?novo=1">grão</a> com região, processo e torra — o app sugere a receita de partida.</li><li>Registre a extração com a nota de xícara e os sinais que percebeu; o motor calcula o ajuste para a próxima.</li></ol></div>` : ''}
       <div class="section-title"><h2>Calibração em andamento</h2></div>
-      ${calibs.length ? `<div class="grid">${calibs.map(({ g, cal }) => `
+      ${calibs.some((c) => !c.cal.length) ? `<p class="text-2" style="margin:0 0 8px"><small>${calibs.filter((c) => !c.cal.length).length} grão(s) ainda sem extração · <a href="#/graos">ver todos</a></small></p>` : ''}
+      ${calibs.some((c) => c.cal.length) ? `<div class="grid">${calibs.filter((c) => c.cal.length).map(({ g, cal }) => `
         <div class="card clickable" onclick="location.hash='#/grao/${g.id}'">
           <div class="row between"><h3>${esc(g.nome)}</h3>${cal.some((c) => c.status === 'calibrado') ? '<span class="badge ok">✓ calibrado</span>' : cal.length ? '<span class="badge accent">ajustando</span>' : '<span class="badge">novo</span>'}</div>
           <small>${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc((DB.processo[g.processo] || {}).nome.split(' (')[0] || '')} · torra ${esc((DB.torra[g.torra] || {}).nome || '').toLowerCase()}</small>
           ${cal.length ? `<div class="chips" style="margin-top:8px">${cal.map((c) => `<span class="chip static ${c.status === 'calibrado' ? 'on' : ''}">${esc(metodo(c.mid).nome)} · ${c.tentativas}×${c.melhor && c.melhor.nota ? ` · melhor ${c.melhor.nota}` : ''}</span>`).join('')}</div>` : '<small class="muted">Nenhuma extração ainda.</small>'}
-        </div>`).join('')}</div>` : '<div class="empty"><div class="big">${BEAN}</div>Nenhum grão cadastrado.</div>'}
+        </div>`).join('')}</div>` : `<div class="empty"><div class="big">${BEAN}</div>${calibs.length ? 'Nenhuma calibração começou. Escolha um grão e registre a primeira extração.' : 'Nenhum grão cadastrado.'}</div>`}
       <div class="section-title"><h2>Últimas extrações</h2><a href="#/diario">ver todas</a></div>
       ${ultimas.length ? `<div class="list">${ultimas.map(itemExtracao).join('')}</div>` : '<div class="empty"><div class="big">📓</div>O diário está vazio.</div>'}
     `;
   };
+
+  /* ---------- Início: Pingo + cartões de ação rápida ---------- */
+  function ultimaExtracao() { return state.extracoes.slice().sort((a, b) => new Date(b.data) - new Date(a.data))[0]; }
+  function saudacaoPingo() {
+    if (!window.Mascote) return '';
+    const h = new Date().getHours();
+    const oi = h < 5 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+    let humor = 'feliz', txt = 'Bora calibrar um café hoje?';
+    const ult = ultimaExtracao();
+    if (window.CafeCafeina) { const f = window.Mascote.porCafeina(window.CafeCafeina.resumo()); humor = f.humor; txt = f.texto; }
+    if (ult && (humor === 'feliz' || humor === 'sonolento')) {
+      withDiag(ult);
+      const g = grao(ult.graoId), m = metodo(ult.metodoId);
+      if (ult.nota >= 8) { humor = humor === 'sonolento' ? humor : 'radiante'; txt += ` Sua última extração de ${g ? g.nome : 'café'} (${m ? m.nome : ''}) tirou nota ${ult.nota}.`; }
+      else if (ult.diag && ult.diag.cor !== 'ok') { txt += ` A última de ${g ? g.nome : 'café'} pediu ajuste: ${ult.diag.rotulo.toLowerCase()}.`; }
+    }
+    return `<div style="margin-bottom:4px">${window.Mascote.card(humor, txt, { titulo: `${oi}! Eu sou o Pingo.` })}</div>`;
+  }
+  function tilesInicio() {
+    const ult = ultimaExtracao();
+    const g = ult && grao(ult.graoId), m = ult && metodo(ult.metodoId);
+    const rep = ult && g ? `<a class="qa-tile destaque" href="#/nova?from=${ult.id}&repetir=1"><span class="qa-ico">🔁</span><span class="qa-t">Repetir última receita</span><span class="qa-s">${esc(g.nome)} · ${esc(m ? m.nome : '')}${ult.nota ? ' · nota ' + ult.nota : ''}</span></a>`
+      : `<a class="qa-tile destaque" href="#/nova"><span class="qa-ico">＋</span><span class="qa-t">Nova extração</span><span class="qa-s">registre e calibre</span></a>`;
+    const timer = ult && g ? `<a class="qa-tile" href="#/nova?from=${ult.id}&repetir=1&timer=1"><span class="qa-ico">⏱</span><span class="qa-t">Timer guiado</span><span class="qa-s">com a última receita</span></a>` : '';
+    const est = estoqueResumo();
+    const estoque = `<a class="qa-tile" href="#/graos?estoque=1"><span class="qa-ico">📦</span><span class="qa-t">Estoque</span><span class="qa-s">${est.total ? `${est.gramas} g em ${est.total} grão(s)` : 'informe o peso dos pacotes'}</span>${est.acabando ? `<span class="badge sobre">⚠ ${est.acabando} acabando</span>` : ''}</a>`;
+    return rep + timer + estoque;
+  }
+
+  /* ---------- Estoque ---------- */
+  function restante(g) {
+    if (!g || !(+g.pesoPacote)) return null;
+    const usado = state.extracoes.filter((x) => x.graoId === g.id).reduce((s, x) => s + (+x.dose || 0), 0);
+    return Math.max(0, Math.round(+g.pesoPacote - (+g.usadoAntes || 0) - usado));
+  }
+  function dosesRestantes(g, r) {
+    const xs = state.extracoes.filter((x) => x.graoId === g.id);
+    const dose = xs.length ? xs.reduce((s, x) => s + (+x.dose || 0), 0) / xs.length : (+g.dosePadrao || 15);
+    return Math.floor(r / dose);
+  }
+  function estoqueResumo() {
+    const ativos = state.graos.filter((g) => !g.arquivado && restante(g) != null);
+    const gramas = ativos.reduce((s, g) => s + restante(g), 0);
+    const acabando = ativos.filter((g) => restante(g) > 0 && dosesRestantes(g, restante(g)) <= 3).length;
+    return { total: ativos.length, gramas, acabando };
+  }
+  function badgeEstoque(g) {
+    const r = restante(g); if (r == null) return '';
+    const d = dosesRestantes(g, r);
+    return r <= 0 ? '<span class="badge">acabou</span>' : `<span class="badge ${d <= 3 ? 'sobre' : ''}">${d <= 3 ? '⚠ ' : ''}${r} g · ~${d} doses</span>`;
+  }
 
   function itemExtracao(x) {
     const g = grao(x.graoId), m = metodo(x.metodoId);
@@ -240,6 +298,7 @@
         ${x.despejos && x.despejos.length ? `<details class="recipe" style="margin-top:10px" open><summary>Despejos executados (${x.despejos.length})</summary>${tabelaReceita({ etapas: x.despejos }, m, false)}</details>` : ''}
       </div>
 
+      ${window.Mascote ? (() => { const f = window.Mascote.porExtracao(x); return `<div style="margin-top:12px">${window.Mascote.card(f.humor, f.texto, { compacto: true })}</div>`; })() : ''}
       <div class="card" style="margin-top:12px">
         <h3>Diagnóstico ${badgeDiag(x.diag)}</h3>
         ${barraExtracao(x.diag)}
@@ -286,7 +345,7 @@
     $('#title').textContent = 'Nova extração';
     if (!state.graos.length) { view.innerHTML = `<div class="empty"><div class="big">${BEAN}</div>Cadastre um grão antes de registrar extrações.<div style="margin-top:12px"><a class="btn primary" href="#/graos?novo=1">Cadastrar grão</a></div></div>`; return; }
     const from = r.q.from ? extracao(r.q.from) : null;
-    const copiar = !!r.q.copiar;
+    const copiar = !!r.q.copiar, repetir = !!r.q.repetir;
     const pre = {
       graoId: (from && from.graoId) || r.q.grao || state.graos[0].id,
       metodoId: (from && from.metodoId) || r.q.metodo || 'v60',
@@ -373,6 +432,7 @@
     const hintCafeina = () => { const h = $('#hCafeina'); if (!h || !window.CafeCafeina) return; const { g, m } = ctx(); const mg = window.CafeCafeina.estimarExtracao(g, m, +F('dose').value); h.textContent = `≈ ${Math.round(mg * (+F('bebido').value))} mg de cafeína (estimativa para ${F('dose').value || 0} g)`; };
     ['dose', 'bebido', 'graoId', 'metodoId'].forEach((n) => F(n).addEventListener('change', hintCafeina)); F('dose').addEventListener('input', hintCafeina);
     setTimeout(hintCafeina, 0);
+    if (r.q.timer) setTimeout(() => $('#btnTimer') && $('#btnTimer').click(), 50);
     $('#pourAdd').onclick = addLinha;
     $('#pours').addEventListener('click', (e) => { if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); $$('#pours tr[data-row] td.n').forEach((td, i) => (td.textContent = i + 1)); } });
     function renderSugestao() {
@@ -423,7 +483,12 @@
 
     const rec0 = renderSugestao();
     if (from) {
-      if (copiar) {
+      if (repetir) {
+        aplicarReceita({ clicks: from.clicks, dose: from.dose, ratio: from.ratio, water: from.water, tempC: from.tempC, tempoS: from.tempoS });
+        if (from.despejos && from.despejos.length) $('#pours').innerHTML = tabelaReceita({ etapas: from.despejos }, ctx().m, true);
+        F('tempo').value = '';
+        toast('Receita da última extração carregada');
+      } else if (copiar) {
         aplicarReceita({ clicks: from.clicks, dose: from.dose, ratio: from.ratio, water: from.water, tempC: from.tempC, tempoS: from.tempoS });
         ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (from[k]) { F(k).value = from[k]; F(k).nextElementSibling.value = from[k]; } });
         F('nota').value = from.nota || 7; F('nota').nextElementSibling.value = F('nota').value;
@@ -465,12 +530,14 @@
   routes.graos = (view, r) => {
     $('#title').textContent = 'Grãos';
     const gs = state.graos.slice().sort((a, b) => (a.arquivado === b.arquivado ? 0 : a.arquivado ? 1 : -1));
+    if (r.q.estoque) gs.sort((a, b) => { const ra = restante(a), rb = restante(b); return (ra == null ? 1e9 : ra) - (rb == null ? 1e9 : rb); });
     view.innerHTML = `
-      <div class="row between"><h2 style="margin:0">Seus grãos</h2><button class="btn primary sm" id="novo">＋ Novo grão</button></div>
+      <div class="row between"><h2 style="margin:0">${r.q.estoque ? 'Estoque' : 'Seus grãos'}</h2><button class="btn primary sm" id="novo">＋ Novo grão</button></div>
+      ${r.q.estoque ? `<small class="muted">Ordenado pelo que está acabando. O estoque desconta a dose de cada extração registrada. ${estoqueResumo().gramas} g no total.</small>` : ''}
       <div class="list" style="margin-top:12px">${gs.length ? gs.map((g) => {
         const n = state.extracoes.filter((x) => x.graoId === g.id).length;
         return `<div class="item" onclick="location.hash='#/grao/${g.id}'"><div class="ico">${BEAN}</div>
-          <div><div class="t">${esc(g.nome)} ${g.arquivado ? '<span class="badge">arquivado</span>' : ''}</div><div class="s">${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc(((DB.processo[g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[g.torra] || {}).nome || '').toLowerCase())}${g.dataTorra ? ' · torrado em ' + fmtDia(g.dataTorra) : ''}</div>${g.torrefacao ? `<div class="s">${esc(g.torrefacao)}${g.kit ? ' · ' + esc(g.kit) : ''}</div>` : ''}</div>
+          <div><div class="t">${esc(g.nome)} ${g.arquivado ? '<span class="badge">arquivado</span>' : ''} ${badgeEstoque(g)}</div><div class="s">${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc(((DB.processo[g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[g.torra] || {}).nome || '').toLowerCase())}${g.dataTorra ? ' · torrado em ' + fmtDia(g.dataTorra) : ''}</div>${g.torrefacao ? `<div class="s">${esc(g.torrefacao)}${g.kit ? ' · ' + esc(g.kit) : ''}</div>` : ''}</div>
           <div class="right"><div class="score">${n}</div><small>extr.</small></div></div>`;
       }).join('') : '<div class="empty"><div class="big">${BEAN}</div>Nenhum grão cadastrado.</div>'}</div>`;
     $('#novo').onclick = () => formGrao();
@@ -500,6 +567,8 @@
           <label class="field"><span class="lbl">Data da torra</span><input type="date" name="dataTorra" value="${esc(g.dataTorra || '')}"></label>
           <label class="field"><span class="lbl">Altitude (m)</span><input type="number" name="altitude" value="${esc(g.altitude || '')}" inputmode="numeric"></label>
           <label class="field"><span class="lbl">Dose padrão (g, opcional)</span><input type="number" name="dosePadrao" value="${esc(g.dosePadrao || '')}" inputmode="decimal" step="0.1"></label>
+          <label class="field"><span class="lbl">Peso do pacote (g)</span><input type="number" name="pesoPacote" value="${esc(g.pesoPacote || '')}" inputmode="numeric" placeholder="ex.: 250"></label>
+          <label class="field"><span class="lbl">Já usado antes do app (g)</span><input type="number" name="usadoAntes" value="${esc(g.usadoAntes || '')}" inputmode="numeric" placeholder="0"></label>
           <label class="field"><span class="lbl">Pontuação (SCA)</span><input type="text" name="pontuacao" value="${esc(g.pontuacao || '')}" placeholder="ex.: 86+"></label>
           <label class="field"><span class="lbl">Kit / origem da compra</span><input type="text" name="kit" value="${esc(g.kit || '')}"></label>
           <label class="field full"><span class="lbl">Link da loja</span><input type="text" name="link" value="${esc(g.link || '')}" inputmode="url" placeholder="https://"></label>
@@ -538,7 +607,7 @@
         try {
           const res = await window.CafeRotulo.ler(file, (msg) => { const el = $('#scanMsg', sheet); if (el) el.textContent = msg; });
           const preenchidos = aplicarCampos(res.campos);
-          st.innerHTML = `<div class="scan-status ok">✓ ${res.fonte === 'ia' ? 'Lido pela IA' : 'Lido por OCR local'} · ${preenchidos.length ? 'preenchido: ' + preenchidos.join(', ') : 'nenhum campo reconhecido'}. Confira antes de salvar.</div>${res.texto ? `<details class="recipe" style="margin-top:6px"><summary>Texto lido</summary><pre class="ocr-text">${esc(res.texto)}</pre></details>` : ''}${res.aviso ? `<div class="help">${esc(res.aviso)}</div>` : ''}`;
+          st.innerHTML = `<div class="scan-status ok">✓ ${res.fonte === 'ia' ? 'Lido pelo ' + (res.quem || 'IA') : 'Lido por OCR local'} · ${preenchidos.length ? 'preenchido: ' + preenchidos.join(', ') : 'nenhum campo reconhecido'}. Confira antes de salvar.</div>${res.texto ? `<details class="recipe" style="margin-top:6px"><summary>Texto lido</summary><pre class="ocr-text">${esc(res.texto)}</pre></details>` : ''}${res.aviso ? `<div class="help">${esc(res.aviso)}</div>` : ''}`;
         } catch (err) {
           st.innerHTML = `<div class="scan-status err">✕ ${esc(err.message || String(err))}</div>`;
         }
@@ -563,7 +632,7 @@
       if (del) del.onclick = () => { if (confirmar('Excluir o grão e TODAS as suas extrações?')) { state.graos = state.graos.filter((x) => x.id !== g.id); state.extracoes = state.extracoes.filter((x) => x.graoId !== g.id); save(); closeModal(); toast('Grão excluído'); go('#/graos'); } };
       f.addEventListener('submit', (e) => {
         e.preventDefault();
-        const o = { ...g, id: g.id || uid(), nome: F('nome').value.trim(), produtor: F('produtor').value.trim(), torrefacao: F('torrefacao').value.trim(), regiao: F('regiao').value, variedade: F('variedade').value.trim(), processo: F('processo').value, torra: F('torra').value, especie: F('especie').value, dataTorra: F('dataTorra').value, altitude: F('altitude').value ? +F('altitude').value : null, dosePadrao: F('dosePadrao').value ? +F('dosePadrao').value : null, acidez: +F('acidez').value, corpo: +F('corpo').value, docura: +F('docura').value, notas: chipsVal(sheet, 'notas'), obs: F('obs').value.trim(), pontuacao: F('pontuacao').value.trim(), kit: F('kit').value.trim(), link: F('link').value.trim(), criadoEm: g.criadoEm || new Date().toISOString() };
+        const o = { ...g, id: g.id || uid(), nome: F('nome').value.trim(), produtor: F('produtor').value.trim(), torrefacao: F('torrefacao').value.trim(), regiao: F('regiao').value, variedade: F('variedade').value.trim(), processo: F('processo').value, torra: F('torra').value, especie: F('especie').value, dataTorra: F('dataTorra').value, altitude: F('altitude').value ? +F('altitude').value : null, dosePadrao: F('dosePadrao').value ? +F('dosePadrao').value : null, acidez: +F('acidez').value, corpo: +F('corpo').value, docura: +F('docura').value, notas: chipsVal(sheet, 'notas'), obs: F('obs').value.trim(), pesoPacote: F('pesoPacote').value ? +F('pesoPacote').value : null, usadoAntes: F('usadoAntes').value ? +F('usadoAntes').value : 0, pontuacao: F('pontuacao').value.trim(), kit: F('kit').value.trim(), link: F('link').value.trim(), criadoEm: g.criadoEm || new Date().toISOString() };
         if (isNew) state.graos.push(o); else Object.assign(g, o);
         save(); closeModal(); toast(isNew ? 'Grão cadastrado' : 'Grão atualizado');
         if (isNew) go(`#/grao/${o.id}`); else render();
@@ -590,6 +659,7 @@
           <span class="chip static">📍 ${esc(reg.nome)}</span><span class="chip static">${esc(proc ? proc.nome.split(' (')[0] : '')}</span><span class="chip static">🔥 ${esc(tor ? tor.nome : '')}</span>
           ${g.variedade ? `<span class="chip static">🌱 ${esc(g.variedade)}</span>` : ''}${g.altitude ? `<span class="chip static">⛰️ ${g.altitude} m</span>` : ''}${g.pontuacao ? `<span class="chip static">⭐ ${esc(g.pontuacao)}</span>` : ''}${g.dataTorra ? `<span class="chip static">📅 ${fmtDia(g.dataTorra)} (${Math.floor((Date.now() - new Date(g.dataTorra)) / 86400000)} d)</span>` : '<span class="chip static" style="color:var(--sobre)">📅 data da torra não informada</span>'}
         </div>
+        ${restante(g) != null ? `<p style="margin:8px 0 0">📦 Estoque: ${badgeEstoque(g)} <small class="muted">de ${g.pesoPacote} g</small></p>` : ''}
         ${g.kit ? `<p class="text-2" style="margin:8px 0 0"><small>🛒 ${esc(g.kit)}${g.link ? ` · <a href="${esc(g.link)}" target="_blank" rel="noopener">página do café ↗</a>` : ''}</small></p>` : ''}
         ${g.obs ? `<p class="text-2" style="margin:8px 0 0"><small>📝 ${esc(g.obs)}</small></p>` : ''}
         ${g.notas && g.notas.length ? `<p class="text-2" style="margin:8px 0 0"><small>${g.notas.map(esc).join(' · ')}</small></p>` : ''}
@@ -818,7 +888,7 @@
   }
 
   /* ---------------- API para módulos (timer, rótulo, cafeína) ---------------- */
-  const hooks = { home: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [] };
+  const hooks = { home: [], tiles: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [] };
   window.CafeLab = {
     state: () => state, save, carregarDemo, routes, render, go, toast, modal, closeModal, esc, uid, $, $$, fmtData, parseTempo,
     grao, moedor, metodo, extracao, BEAN, hooks, nowLocal

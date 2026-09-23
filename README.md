@@ -14,7 +14,11 @@ Diário técnico de extrações e calibração de cafés especiais. Aplicação 
 - **Receitas de despejo** por método (bloom, cada ataque com tempo e água acumulada, drenagem), escaladas para a dose e a razão da extração. No registro você anota o que realmente fez em cada despejo.
 - **Catálogo dos cafés comprados** já cadastrado em Grãos na primeira abertura: Maeda Coffee (Kit Inicial e Kit Exóticos), Encantos do Café (Kit Degustação: Agrado, Desejo, Raro, Sensação), Net Cafés (Caparaó: Caramelo & Chocolate, Frutas Amarelas, Frutas Vermelhas) e Colheita Café (Pra Beber de Balde, Halls de Cereja, Blend da Copa, Castanhas & Caramelo). Os moedores **Starseeker E55 Pro** e **Kingrinder K2** também vêm pré-cadastrados com referências de cliques por método.
 - **Timer guiado de preparo**: contagem regressiva por etapa, anel de progresso, balança-alvo subindo na vazão ideal de cada método (ex.: 6 g/s na V60), aviso sonoro e vibração 3-2-1, tela sempre ligada, botão para adiantar a etapa e marcação do fim da drenagem. Ao concluir, o tempo total e os horários reais de cada despejo vão para o registro da extração.
-- **Leitura de rótulos pela câmera**: no cadastro de grão, fotografe o pacote. Com uma chave da API da Anthropic (Mais → Backup e ajustes), o Claude lê a foto e preenche produtor, região, variedade, processo, torra, altitude, data da torra, pontuação e notas, mapeados para o banco nativo. Sem chave, um OCR local (Tesseract.js, baixado na primeira vez) faz uma leitura mais simples. A chave fica só no aparelho e não entra no backup. O SDK oficial da Anthropic está empacotado em `vendor/`.
+- **Leitura de rótulos pela câmera**: no cadastro de grão, fotografe o pacote. Com uma chave da API da Anthropic ou do Google Gemini (Mais → Backup e ajustes, escolha o provedor), a IA lê a foto e preenche produtor, região, variedade, processo, torra, altitude, data da torra, pontuação e notas, mapeados para o banco nativo. Sem chave, um OCR local (Tesseract.js, baixado na primeira vez) faz uma leitura mais simples. A chave fica só no aparelho e não entra no backup. O SDK oficial da Anthropic está empacotado em `vendor/`.
+- **Pingo, o mascote**: uma xícara com olhos, braços e vapor animado que aparece no início, na cafeína, nas extrações, no timer e no latte art. A expressão muda com o nível de cafeína, a hora do dia, a nota da extração e a pontuação do treino.
+- **Início com ações rápidas**: repetir a última receita (com ou sem timer), estoque, cafeína e latte art em cartões.
+- **Estoque de grãos**: informe o peso do pacote e o app desconta a dose de cada extração, mostra quantas doses restam e avisa quando um café está acabando.
+- **Treino de latte art**: segure o celular como o cabo da jarra e balance o punho. O acelerômetro vira uma onda que você compara com o padrão-alvo descendo na tela (rosetta completa, balanço constante, 3/5/7 balanços, aleatório), com metrônomo, ritmo, largura e velocidade ajustáveis. Ao final, pontua ritmo, constância, uniformidade e sincronia e desenha a rosetta que seu movimento formaria. Sem sensor, dá para treinar com o dedo na tela.
 - **Cafeína e sono**: diário de cafeína com lançamentos rápidos (cafeteria, energético, chá, chimarrão…) e registro automático das extrações que você bebeu. Um modelo farmacocinético de um compartimento, ajustado por peso, idade, sensibilidade, fumo, anticoncepcional e gestação, projeta a curva no corpo, a quantidade na hora de dormir e o último horário seguro para um café. Estimativa educativa, não é orientação médica.
 - **Backup** em JSON (exportar/importar/copiar). Os dados ficam apenas no aparelho.
 
@@ -50,8 +54,10 @@ Em **Mais → Backup e ajustes → Carregar exemplo** você vê o motor funciona
 | `engine.js` | Motor: ponto de partida, diagnóstico, recomendação, status de calibração |
 | `app.js` | Interface, rotas, formulários, gráficos SVG, backup, PWA |
 | `timer.js` | Timer guiado de preparo |
-| `rotulo.js` | Leitura de rótulos (Claude + OCR local) |
+| `rotulo.js` | Leitura de rótulos (Claude, Gemini ou OCR local) |
 | `cafeina.js` | Diário de cafeína e modelo farmacocinético |
+| `latte.js` | Treino de latte art com acelerômetro |
+| `mascote.js` | Pingo, o mascote (SVG animado) |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic (0.128.0) empacotado para navegador |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Instalação como app e cache offline |
 
@@ -64,3 +70,20 @@ Em **Mais → Backup e ajustes → Carregar exemplo** você vê o motor funciona
 5. Uma receita vira **calibrada** quando o índice fica dentro de ±0,2 e a nota atinge o alvo (padrão 8, configurável).
 
 Todos os valores da biblioteca são referências de bancada, não regras absolutas; o histórico real sempre prevalece.
+
+## Leitura de rótulos: Claude ou Gemini
+
+Em **Mais → Backup e ajustes → Leitura de rótulos por IA**, escolha o provedor e cole a chave:
+
+- **Gemini**: crie a chave em [aistudio.google.com](https://aistudio.google.com) → *Get API key*. Há cota gratuita; no plano gratuito o Google pode usar o conteúdo enviado para melhorar os modelos. O modelo padrão é `gemini-3.8-flash` e dá para digitar outro id se o Google lançar ou aposentar modelos.
+- **Claude**: crie a chave em [console.anthropic.com](https://console.anthropic.com) → *API Keys*. Cobrado por uso.
+
+As chaves ficam só no aparelho. Como o app roda inteiro no navegador, qualquer pessoa com acesso ao seu celular desbloqueado poderia ver a chave; use uma chave própria para este app e com limite de gastos.
+
+## Publicar no GitHub Pages
+
+1. No GitHub, abra o repositório → **Settings → Pages**.
+2. Em *Build and deployment*, escolha **Deploy from a branch**, selecione a branch (por exemplo `main`, depois de fazer o merge) e a pasta **/ (root)**. Salve.
+3. Em um ou dois minutos o endereço `https://<seu-usuario>.github.io/<repositório>/` fica no ar. Abra no celular e use *Instalar aplicativo* (Android) ou *Compartilhar → Adicionar à Tela de Início* (iPhone).
+
+Para mudar algo você mesmo: edite o arquivo no GitHub (ícone de lápis) e faça *Commit*. O Pages publica a nova versão sozinho. No celular, feche e reabra o app duas vezes para o cache offline pegar a atualização.

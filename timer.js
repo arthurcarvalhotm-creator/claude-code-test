@@ -78,6 +78,7 @@
             <small class="muted">alvo <span id="gAlvo">0</span> / ${total} g</small>
           </div>
         </div>
+        <div class="tmr-pingo" id="tPingo">${window.Mascote ? window.Mascote.svg('feliz', { size: 56 }) : ''}</div>
         <div class="tmr-instr" id="tInstr"><strong>Tare a balança com o café no filtro.</strong><br><span class="muted">Toque em Iniciar. Haverá uma contagem de 3 s.</span></div>
         <div class="tmr-flow" id="tFlow"></div>
         <div class="tmr-steps" id="tSteps">${fases.map((f) => `
@@ -108,6 +109,7 @@
         st.fase = i;
         st.marcas[i] = Math.round(e);
         beep(i === 0 ? 1046 : 880, 0.25, 0.2); vibrar([120, 60, 120]);
+        const pg = $('#tPingo'); if (pg && window.Mascote) pg.innerHTML = window.Mascote.svg(fases[i].final ? 'radiante' : 'torcendo', { size: 56 });
         const f = fases[i];
         if (f.final && drenagemFinal) $('#bDrain').hidden = false;
       }

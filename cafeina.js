@@ -169,7 +169,9 @@
     const pctDia = Math.min(100, r.hoje / r.par.limite * 100);
     const hoje = r.doses.filter((d) => d.ts >= r.dia0).sort((a, b) => b.ts - a.ts);
     const p = r.p;
+    const fala = window.Mascote ? window.Mascote.porCafeina(r) : null;
     view.innerHTML = `
+      ${fala ? `<div style="margin-bottom:12px">${window.Mascote.card(fala.humor, fala.texto, { compacto: true })}</div>` : ''}
       <div class="stats">
         <div class="stat"><span class="lbl">Ingerido hoje</span><div class="hero-num">${r.hoje}<small style="font-size:.9rem"> mg</small></div><div class="meter"><div style="width:${pctDia}%"></div></div><small class="muted">limite ${r.par.limite} mg/dia</small></div>
         <div class="stat"><span class="lbl">No corpo agora</span><div class="hero-num">${Math.round(r.noCorpo)}<small style="font-size:.9rem"> mg</small></div><small class="muted">${(r.noCorpo / r.par.vd).toFixed(1).replace('.', ',')} mg/L no sangue</small></div>
@@ -226,11 +228,9 @@
   }
 
   /* ---------- integrações ---------- */
-  lab.hooks.home.push(() => {
+  lab.hooks.tiles.push(() => {
     const r = resumo(); const st = STATUS[r.status];
-    return `<a class="card clickable cf-home" href="#/cafeina" style="display:block;margin-top:12px;text-decoration:none;color:inherit">
-      <div class="row between"><strong>☕ Cafeína hoje: ${r.hoje} mg</strong><span class="badge ${st.cls === 'danger' ? 'sobre' : st.cls}">${st.ico} ${Math.round(r.naCama)} mg às ${hhmm(r.dormir)}</span></div>
-      <small class="muted">${Math.round(r.noCorpo)} mg no corpo agora · ${r.ultimo ? 'último café de 100 mg até ' + hhmm(r.ultimo) : 'evite mais cafeína hoje'} · toque para lançar</small></a>`;
+    return `<a class="qa-tile cf-home" href="#/cafeina"><span class="qa-ico">💓</span><span class="qa-t">Cafeína: ${r.hoje} mg hoje</span><span class="qa-s">${Math.round(r.noCorpo)} mg no corpo agora</span><span class="badge ${st.cls === 'danger' ? 'sobre' : st.cls}">${st.ico} ${Math.round(r.naCama)} mg às ${hhmm(r.dormir)}</span></a>`;
   });
   lab.hooks.mais.push(() => `<div class="item" onclick="location.hash='#/cafeina'"><div class="ico">💓</div><div><div class="t">Cafeína e sono</div><div class="s">Diário de cafeína, curva no corpo e hora de dormir</div></div><div>›</div></div>`);
   lab.hooks.extracaoSalva.push((x, g, m) => {

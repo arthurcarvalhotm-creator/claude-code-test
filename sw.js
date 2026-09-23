@@ -1,6 +1,6 @@
 /* Service worker: cache-first para funcionar offline depois da primeira visita. */
-const CACHE = 'cafelab-v3';
-const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
+const CACHE = 'cafelab-v4';
+const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './mascote.js', './latte.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
 
 self.addEventListener('install', (e) => {
