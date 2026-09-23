@@ -112,7 +112,7 @@ main#view { max-width: 860px; margin: 0 auto; padding: 16px 16px 24px; }
 /* Forms */
 label.field { display: block; margin-bottom: 12px; }
 label.field > span.lbl, .lbl { display: block; font-size: .8rem; font-weight: 600; color: var(--text-2); margin-bottom: 4px; letter-spacing: .01em; }
-input[type=text], input[type=number], input[type=date], input[type=datetime-local], select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=date], input[type=datetime-local], input[type=time], select, textarea {
   width: 100%; border: 1px solid var(--border); background: var(--surface); color: var(--text);
   border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; /* evita zoom no iOS */
 }
@@ -370,3 +370,5 @@ svg.chart .cf-cross { stroke: var(--text-2); stroke-width: 1; }
 
 .tmr-instr { position: relative; }
 .tmr-pingo { float: right; margin: -8px 0 0 6px; }
+#btnSync.sync-erro { color: var(--danger); }
+#btnSync.sync-roda { animation: spin 1s linear infinite; }

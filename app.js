@@ -17,7 +17,7 @@
     try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.graos) return s; } catch (e) { /* ignore */ }
     return { graos: [], moedores: [], extracoes: [], config: { tema: 'auto', notaAlvo: 8 } };
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } try { hooks.salvo.forEach((fn) => fn()); } catch (e) { /* módulos ainda não carregados */ } }
   /* Importa o catálogo nativo (cafés comprados) e os moedores do usuário sem duplicar */
   function seedCatalogo(force) {
     let n = 0, m = 0;
@@ -856,7 +856,7 @@
     const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
     const isFile = location.protocol === 'file:';
     view.innerHTML = `
-      <div class="card"><h3>Backup</h3><p class="text-2">Os dados ficam só neste aparelho (armazenamento local do navegador). Exporte com frequência.</p>
+      <div class="card"><h3>Backup</h3><p class="text-2">Os dados ficam neste aparelho (armazenamento local do navegador). Com a sincronização ativa, uma cópia criptografada vai para o seu GitHub. Exporte um backup de vez em quando.</p>
         <div class="row"><button class="btn primary" id="exp">⬇︎ Exportar JSON</button><label class="btn">⬆︎ Importar JSON<input type="file" id="imp" accept="application/json,.json" hidden></label><button class="btn" id="copy">Copiar para a área de transferência</button></div>
         <textarea id="paste" placeholder="…ou cole aqui um backup JSON e clique em Importar do texto" style="margin-top:10px"></textarea>
         <div class="row" style="margin-top:6px"><button class="btn sm" id="impTxt">Importar do texto</button></div></div>
@@ -873,7 +873,7 @@
       <div class="card" style="margin-top:12px"><h3>Dados de exemplo</h3><p class="text-2">Carrega 1 moedor, 2 grãos e uma sequência de extrações para você ver o motor funcionando.</p><button class="btn" id="demo">Carregar exemplo</button></div>
       <div class="card" style="margin-top:12px"><h3>Zona de perigo</h3><button class="btn danger" id="wipe">Apagar todos os dados</button></div>
       <div class="card" style="margin-top:12px"><h3>Versão do app</h3><p class="text-2">Versão instalada: <strong id="swVersao">${swVersao || (navigator.serviceWorker && navigator.serviceWorker.controller ? 'verificando…' : 'sem cache offline')}</strong>. O app se atualiza sozinho quando abre com internet. Se alguma novidade não aparecer, force a atualização: os seus dados (grãos, extrações, cafeína) não são apagados.</p><button class="btn" id="btnAtualizar">🔄 Forçar atualização</button></div>
-      <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · dados 100 % locais.</small></p>`;
+      <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · dados locais, com sincronização opcional e criptografada.</small></p>`;
     $('#exp').onclick = () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `cafelab-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove(); };
     $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(state)); toast('Copiado'); } catch (e) { toast('Não foi possível copiar'); } };
     const importar = (txt) => { try { const s = JSON.parse(txt); if (!s || !Array.isArray(s.graos) || !Array.isArray(s.extracoes)) throw new Error('formato'); if (!confirmar(`Importar ${s.graos.length} grão(s), ${(s.moedores || []).length} moedor(es) e ${s.extracoes.length} extração(ões)? Isso substitui os dados atuais.`)) return; state = { graos: s.graos, moedores: s.moedores || [], extracoes: s.extracoes, config: s.config || state.config }; save(); applyTheme(); toast('Backup importado'); go('#/inicio'); } catch (e) { toast('Arquivo inválido'); } };
@@ -930,13 +930,13 @@
   }
 
   /* ---------------- API para módulos (timer, rótulo, cafeína) ---------------- */
-  const hooks = { home: [], tiles: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [] };
+  const hooks = { home: [], tiles: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [], salvo: [], boot: [] };
   window.CafeLab = {
     state: () => state, save, carregarDemo, routes, render, go, toast, modal, closeModal, esc, uid, $, $$, fmtData, parseTempo,
     grao, moedor, metodo, extracao, BEAN, hooks, nowLocal
   };
 
   /* ---------------- boot (após os módulos registrarem rotas) ---------------- */
-  function boot() { applyTheme(); seedCatalogo(false); render(); }
+  function boot() { applyTheme(); seedCatalogo(false); render(); hooks.boot.forEach((fn) => fn()); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 })();

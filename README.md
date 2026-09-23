@@ -20,7 +20,8 @@ Diário técnico de extrações e calibração de cafés especiais. Aplicação 
 - **Estoque de grãos**: informe o peso do pacote e o app desconta a dose de cada extração, mostra quantas doses restam e avisa quando um café está acabando.
 - **Treino de latte art**: segure o celular como o cabo da jarra e balance o punho. O acelerômetro vira uma onda que você compara com o padrão-alvo descendo na tela (rosetta completa, balanço constante, 3/5/7 balanços, aleatório), com metrônomo, ritmo, largura e velocidade ajustáveis. Ao final, pontua ritmo, constância, uniformidade e sincronia e desenha a rosetta que seu movimento formaria. Sem sensor, dá para treinar com o dedo na tela.
 - **Cafeína e sono**: diário de cafeína com lançamentos rápidos (cafeteria, energético, chá, chimarrão…) e registro automático das extrações que você bebeu. Um modelo farmacocinético de um compartimento, ajustado por peso, idade, sensibilidade, fumo, anticoncepcional e gestação, projeta a curva no corpo, a quantidade na hora de dormir e o último horário seguro para um café. Estimativa educativa, não é orientação médica.
-- **Backup** em JSON (exportar/importar/copiar). Os dados ficam apenas no aparelho.
+- **Sincronização entre aparelhos**: celular, tablet e notebook compartilham os mesmos dados por um Gist secreto da sua conta do GitHub. O arquivo é criptografado no aparelho (AES-GCM 256, chave derivada da sua senha com PBKDF2) antes de sair, então o GitHub só guarda texto cifrado. A mescla é por registro: novidades dos dois lados somam, a edição mais recente vence e exclusões não voltam. Configure em Mais → Backup e ajustes → Sincronização, com o mesmo token e a mesma senha em cada aparelho.
+- **Backup** em JSON (exportar/importar/copiar).
 
 ## Como rodar
 
@@ -57,6 +58,7 @@ Em **Mais → Backup e ajustes → Carregar exemplo** você vê o motor funciona
 | `rotulo.js` | Leitura de rótulos (Claude, Gemini ou OCR local) |
 | `cafeina.js` | Diário de cafeína e modelo farmacocinético |
 | `latte.js` | Treino de latte art com acelerômetro |
+| `sync.js` | Sincronização criptografada via GitHub Gist |
 | `mascote.js` | Pingo, o mascote (SVG animado) |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic (0.128.0) empacotado para navegador |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Instalação como app e cache offline |
