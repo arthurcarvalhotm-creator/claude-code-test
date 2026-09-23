@@ -47,6 +47,14 @@
       if (m) Object.assign(m, { max: mm.max, passo: mm.passo, refs: { ...mm.refs }, obs: mm.obs });
       state.config.moedoresVersao = 3; save();
     }
+    if ((state.config.moedoresVersao || 0) < 4) { // K2 e JX-Pro recalibrados pelo uso real
+      ['kingrinder-k2', '1zpresso-jx-pro'].forEach((id) => {
+        const mm = DB.moedoresModelo.find((x) => x.id === id);
+        const m = state.moedores.find((x) => x.modeloId === id);
+        if (m) Object.assign(m, { max: mm.max, passo: mm.passo, refs: { ...mm.refs }, obs: mm.obs });
+      });
+      state.config.moedoresVersao = 4; save();
+    }
     if (!state.config.estoqueMigrado) {
       state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
       state.config.estoqueMigrado = true; save();
