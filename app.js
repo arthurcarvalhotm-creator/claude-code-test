@@ -33,6 +33,14 @@
       state.config.catalogoVersao = DB.CATALOGO_VERSAO;
       save();
     }
+    if ((state.config.moedoresVersao || 0) < 2) { // atualiza escalas/referências dos moedores pré-cadastrados
+      DB.moedoresModelo.filter((mm) => mm.id).forEach((mm) => {
+        const m = state.moedores.find((x) => x.modeloId === mm.id);
+        if (m) Object.assign(m, { nome: mm.nome, tipo: mm.tipo, min: mm.min, max: mm.max, passo: mm.passo, direcao: mm.direcao, refs: { ...mm.refs }, obs: mm.obs });
+        else state.moedores.push({ id: uid(), modeloId: mm.id, nome: mm.nome, tipo: mm.tipo, min: mm.min, max: mm.max, passo: mm.passo, direcao: mm.direcao, refs: { ...mm.refs }, obs: mm.obs });
+      });
+      state.config.moedoresVersao = 2; save();
+    }
     if (!state.config.estoqueMigrado) {
       state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
       state.config.estoqueMigrado = true; save();

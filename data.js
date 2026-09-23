@@ -398,18 +398,20 @@ window.CAFE_DB = (function () {
   /* Moedores populares como modelos de escala (o usuário pode editar) */
   const moedoresModelo = [
     { nome: 'Timemore C2 / C3', tipo: 'manual', min: 0, max: 36, passo: 1, refs: { espresso: 8, moka: 12, aeropress: 16, v60: 19, kalita: 21, melitta: 21, 'coador-pano': 21, clever: 21, chemex: 24, 'prensa-francesa': 28, 'cold-brew': 30 } },
-    { nome: '1Zpresso JX / JX-Pro (voltas.cliques → cliques totais)', tipo: 'manual', min: 0, max: 120, passo: 1, refs: { espresso: 18, moka: 30, aeropress: 45, v60: 60, kalita: 66, melitta: 66, 'coador-pano': 66, clever: 66, chemex: 75, 'prensa-francesa': 90, 'cold-brew': 100 } },
     { nome: 'Comandante C40', tipo: 'manual', min: 0, max: 50, passo: 1, refs: { espresso: 10, moka: 14, aeropress: 18, v60: 24, kalita: 26, melitta: 26, 'coador-pano': 26, clever: 26, chemex: 30, 'prensa-francesa': 35, 'cold-brew': 38 } },
     { nome: 'Hario Skerton / Mini Slim', tipo: 'manual', min: 0, max: 20, passo: 1, refs: { espresso: 3, moka: 5, aeropress: 7, v60: 9, kalita: 10, melitta: 10, 'coador-pano': 10, clever: 10, chemex: 12, 'prensa-francesa': 15, 'cold-brew': 17 } },
     { nome: 'Baratza Encore', tipo: 'elétrico', min: 1, max: 40, passo: 1, refs: { espresso: 5, moka: 8, aeropress: 12, v60: 15, kalita: 17, melitta: 17, 'coador-pano': 17, clever: 17, chemex: 22, 'prensa-francesa': 28, 'cold-brew': 32 } },
     { nome: 'Fellow Ode Gen 2', tipo: 'elétrico', min: 1, max: 11, passo: 0.33, refs: { moka: 1.5, aeropress: 2.5, v60: 4, kalita: 4.5, melitta: 4.5, 'coador-pano': 4.5, clever: 5, chemex: 6, 'prensa-francesa': 8, 'cold-brew': 9 } },
     { nome: 'DF64 / Eureka Mignon (escala genérica 0–50)', tipo: 'elétrico', min: 0, max: 50, passo: 0.5, refs: { espresso: 8, moka: 14, aeropress: 22, v60: 28, kalita: 30, melitta: 30, 'coador-pano': 30, clever: 30, chemex: 34, 'prensa-francesa': 40, 'cold-brew': 44 } },
-    { id: 'starseeker-e55-pro', nome: 'Starseeker E55 Pro', tipo: 'elétrico', min: 0, max: 60, passo: 0.5, direcao: 'menor=fino',
-      obs: 'Mós cônicas de 55 mm (titânio), single dose, ajuste stepless com anel numerado. Referências são aproximadas: o zero é o ponto em que as mós encostam (gire no sentido horário até o mais fino com o motor ligado, sem café). Ajuste fino em meios-pontos.',
-      refs: { espresso: 10, moka: 16, aeropress: 22, v60: 28, kalita: 30, melitta: 30, 'coador-pano': 30, clever: 30, chemex: 34, 'prensa-francesa': 40, 'cold-brew': 46 } },
-    { id: 'kingrinder-k2', nome: 'Kingrinder K2', tipo: 'manual', min: 0, max: 60, passo: 1, direcao: 'menor=fino',
-      obs: 'Mós cônicas de 48 mm, ajuste interno: 18 µm por clique, 40 cliques por volta (faixa útil ~0–1030 µm ≈ 57 cliques). Conte os cliques a partir do zero (mós encostadas), girando o disco no sentido anti-horário. Referências calculadas a partir da granulometria alvo de cada método.',
-      refs: { espresso: 14, moka: 22, aeropress: 32, v60: 38, kalita: 44, melitta: 44, 'coador-pano': 44, clever: 44, chemex: 50, 'prensa-francesa': 54, 'cold-brew': 57 } },
+    { id: 'kingrinder-k2', nome: 'Kingrinder K2', tipo: 'manual', min: 0, max: 70, passo: 1, direcao: 'menor=fino',
+      obs: '40 cliques por volta, 18 µm por clique (1 volta = 720 µm). Conte os cliques a partir do zero (mós encostadas). Referências = granulometria média do método ÷ 18 µm.',
+      refs: { espresso: 15, moka: 24, aeropress: 35, v60: 39, kalita: 44, melitta: 46, 'coador-pano': 44, clever: 44, chemex: 50, 'prensa-francesa': 58, 'cold-brew': 61 } },
+    { id: 'starseeker-e55-pro', nome: 'Starseeker E55 Pro', tipo: 'elétrico', min: 0, max: 150, passo: 1, direcao: 'menor=fino',
+      obs: '100 cliques por volta, 10 µm por clique (1 volta = 1000 µm). Zero = mós encostadas. Referências = granulometria média do método ÷ 10 µm.',
+      refs: { espresso: 28, moka: 43, aeropress: 63, v60: 70, kalita: 80, melitta: 83, 'coador-pano': 80, clever: 80, chemex: 90, 'prensa-francesa': 105, 'cold-brew': 110 } },
+    { id: '1zpresso-jx-pro', nome: '1Zpresso JX-Pro', tipo: 'manual', min: 0, max: 160, passo: 1, direcao: 'menor=fino',
+      obs: '40 cliques por volta, 12,5 µm por clique (1 volta = 500 µm). Registre em cliques totais: 1 volta e 16 cliques = 56. Referências = granulometria média do método ÷ 12,5 µm.',
+      refs: { espresso: 22, moka: 34, aeropress: 50, v60: 56, kalita: 64, melitta: 66, 'coador-pano': 64, clever: 64, chemex: 72, 'prensa-francesa': 84, 'cold-brew': 88 } },
     { nome: 'Genérico (0–40)', tipo: 'manual', min: 0, max: 40, passo: 1, refs: { espresso: 6, moka: 10, aeropress: 15, v60: 18, kalita: 20, melitta: 20, 'coador-pano': 20, clever: 20, chemex: 24, 'prensa-francesa': 30, 'cold-brew': 34 } }
   ];
 
