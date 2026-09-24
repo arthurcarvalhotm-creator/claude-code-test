@@ -54,7 +54,7 @@
     try {
       const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(env.iv) }, await chave(senha, env.salt), unb64(env.dados));
       return { dados: JSON.parse(new TextDecoder().decode(pt)), salt: env.salt };
-    } catch (e) { chaveCache = null; throw new Error('Senha de sincronização incorreta para os dados salvos no GitHub.'); }
+    } catch (e) { chaveCache = null; const err = new Error('Senha de sincronização incorreta para os dados salvos no GitHub.'); err.senha = true; throw err; }
   }
 
   /* ---------- GitHub Gist ---------- */
@@ -169,7 +169,7 @@
   }
 
   /* ---------- sincronizar ---------- */
-  let rodando = null, pendente = false, ultimoErro = '';
+  let rodando = null, pendente = false, ultimoErro = '', erroSenha = false;
   function status(msg, tipo) {
     const b = document.getElementById('btnSync');
     if (b) { b.hidden = !ativo(); b.textContent = tipo === 'sync' ? '⟳' : tipo === 'erro' ? '⚠' : '☁'; b.title = msg; b.classList.toggle('sync-erro', tipo === 'erro'); b.classList.toggle('sync-roda', tipo === 'sync'); }
@@ -186,11 +186,11 @@
         garantirIds(st);
         let id = await acharGist();
         let remoto = null, salt = null;
-        if (id) {
+        if (id && !opts.recomecar) {
           const txt = await lerGist(id);
           if (txt) { const d = await decifrar(txt, senha); remoto = d.dados; salt = d.salt; }
         }
-        const base = lerBase();
+        const base = opts.recomecar ? null : lerBase();
         if (remoto) unificarIds(st, remoto.colecoes || {});
         const m = mesclar(st, remoto, base && base.gist === id ? base : null, t);
         // aplica localmente (mesmo objeto de estado do app)
@@ -211,14 +211,14 @@
         ls.set(K.base, JSON.stringify({ gist: id, t, h, cfg: hash(configSinc(st.config)) }));
         ls.set(K.ult, new Date(t).toISOString());
         salvandoPorSync = true; lab.save(); salvandoPorSync = false;
-        ultimoErro = '';
+        ultimoErro = ''; erroSenha = false;
         const quando = new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         status(`Sincronizado às ${quando}`, 'ok');
         if (m.mudouLocal && !opts.silencioso) { lab.toast('Dados atualizados de outro aparelho'); }
         if (m.mudouLocal) lab.render();
         return { ok: true, recebeu: m.mudouLocal, enviou: m.mudouRemoto || !remoto };
       } catch (e) {
-        ultimoErro = e.message || String(e);
+        ultimoErro = e.message || String(e); erroSenha = !!e.senha;
         status('Falha ao sincronizar: ' + ultimoErro, 'erro');
         if (!opts.silencioso) lab.toast(ultimoErro);
         return { ok: false, msg: ultimoErro };
@@ -255,7 +255,11 @@
       <p class="text-2">Seus dados ficam num Gist secreto da sua conta do GitHub, criptografados com a sua senha antes de sair do aparelho. Use o mesmo token e a mesma senha no celular, no tablet e no notebook. O token e a senha ficam só em cada aparelho e não vão para o backup.</p>
       <label class="field"><span class="lbl">Nome deste aparelho</span><input type="text" id="syDisp" value="${lab.esc(dispositivo())}"></label>
       <label class="field"><span class="lbl">Token do GitHub ${ls.get(K.token) ? '<span class="badge ok">configurado</span>' : ''}</span><input type="password" id="syTok" autocomplete="off" placeholder="${ls.get(K.token) ? '•••••••• (deixe em branco para manter)' : 'github_pat_… ou ghp_…'}"></label>
-      <label class="field"><span class="lbl">Senha de criptografia ${ls.get(K.senha) ? '<span class="badge ok">configurada</span>' : ''}</span><input type="password" id="sySenha" autocomplete="new-password" placeholder="${ls.get(K.senha) ? '•••••••• (deixe em branco para manter)' : 'a mesma em todos os aparelhos'}"><div class="help">Sem essa senha ninguém lê os dados, nem você: se esquecer, os dados do GitHub ficam inacessíveis, mas os de cada aparelho continuam lá.</div></label>
+      <label class="field"><span class="lbl">Senha de criptografia ${ls.get(K.senha) ? '<span class="badge ok">configurada</span>' : ''}</span><input type="password" id="sySenha" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="${ls.get(K.senha) ? '•••••••• (deixe em branco para manter)' : 'a mesma em todos os aparelhos'}"></label>
+      <label class="field"><span class="lbl">Confirme a senha</span><input type="password" id="sySenha2" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="digite de novo"></label>
+      <label class="chk" style="margin-top:-6px"><input type="checkbox" id="syVer"> Mostrar senha</label>
+      <div class="help" style="margin-bottom:10px">Não aceite senha sugerida pelo navegador: digite a sua. Sem essa senha ninguém lê os dados, nem você. Se esquecer, use “Recomeçar com esta senha” para criar a cópia de novo a partir de um aparelho.</div>
+      ${on && erroSenha ? `<div class="card soft" style="margin-bottom:10px;border:1px solid var(--sobre)"><strong>⚠ A senha deste aparelho não abre os dados salvos no GitHub.</strong><p class="text-2" style="margin:6px 0 8px">Se você não lembra a senha usada antes, recomece: a cópia no GitHub será substituída pelos dados <strong>deste aparelho</strong>, criptografados com a senha configurada aqui. Faça isso no aparelho com os dados mais completos e depois use a mesma senha nos outros.</p><button class="btn sm danger" id="syRecomecar">Recomeçar com esta senha</button></div>` : ''}
       <div class="row"><button class="btn primary sm" id="sySalvar">${on ? 'Salvar e sincronizar' : 'Ativar sincronização'}</button>${on ? '<button class="btn sm" id="syAgora">⟳ Sincronizar agora</button><button class="btn sm danger" id="syOff">Desativar neste aparelho</button>' : ''}</div>
       <details class="recipe" style="margin-top:10px"><summary>Como criar o token do GitHub</summary><ol class="text-2" style="padding-left:18px;margin:6px 0 0">
         <li>No GitHub, abra <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</strong>.</li>
@@ -266,14 +270,27 @@
     root.appendChild(div);
     const q = (s) => div.querySelector(s);
     q('#sySalvar').onclick = async () => {
-      const tok = q('#syTok').value.trim(), sen = q('#sySenha').value;
+      const tok = q('#syTok').value.trim(), sen = q('#sySenha').value.trim(), sen2 = q('#sySenha2').value.trim();
+      if (sen) {
+        if (sen.length < 8) return lab.toast('Use uma senha com pelo menos 8 caracteres');
+        if (sen !== sen2) return lab.toast('As duas senhas não conferem');
+      }
       if (tok) ls.set(K.token, tok);
-      if (sen) { if (sen.length < 8) return lab.toast('Use uma senha com pelo menos 8 caracteres'); if (sen !== ls.get(K.senha)) { ls.set(K.senha, sen); ls.set(K.base, ''); chaveCache = null; } }
+      if (sen && sen !== ls.get(K.senha)) { ls.set(K.senha, sen); ls.set(K.base, ''); chaveCache = null; }
       ls.set(K.disp, q('#syDisp').value.trim() || dispositivo());
       if (!ativo()) return lab.toast('Informe o token e a senha');
       lab.toast('Sincronizando…');
       const r = await sincronizar();
       if (r && r.ok) lab.toast(r.recebeu ? 'Sincronizado: dados recebidos de outro aparelho' : 'Sincronização ativa');
+      lab.render();
+    };
+    q('#syVer').onchange = (e) => { q('#sySenha').type = q('#sySenha2').type = e.target.checked ? 'text' : 'password'; };
+    const rc = q('#syRecomecar');
+    if (rc) rc.onclick = async () => {
+      if (!window.confirm('Substituir a cópia no GitHub pelos dados deste aparelho, com a senha atual? Os dados que estavam lá com a senha antiga não poderão ser recuperados.')) return;
+      lab.toast('Recomeçando…');
+      const r = await sincronizar({ recomecar: true });
+      if (r && r.ok) lab.toast('Pronto! Use esta mesma senha nos outros aparelhos.');
       lab.render();
     };
     if (on) {
