@@ -372,3 +372,21 @@ svg.chart .cf-cross { stroke: var(--text-2); stroke-width: 1; }
 .tmr-pingo { float: right; margin: -8px 0 0 6px; }
 #btnSync.sync-erro { color: var(--danger); }
 #btnSync.sync-roda { animation: spin 1s linear infinite; }
+
+/* ---------- Avaliação 1–5 com o Pingo ---------- */
+.avaliacao { display: flex; align-items: center; gap: 12px; background: var(--surface-2); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+.avaliacao-res .avaliacao { background: transparent; padding: 0; margin-bottom: 8px; }
+.av-fig { flex: 0 0 auto; }
+.av-corpo { flex: 1; min-width: 0; }
+.estrelas { display: flex; gap: 4px; margin: 6px 0 2px; }
+.estrela { appearance: none; border: 0; background: transparent; font-size: 1.9rem; line-height: 1; color: var(--border); cursor: pointer; padding: 2px; transition: transform .1s, color .1s; }
+.estrela.on { color: var(--accent); }
+.estrela:active { transform: scale(1.2); }
+.pingo-escala { display: flex; justify-content: space-between; align-items: flex-end; gap: 4px; margin: 6px 0 4px; }
+.pe-item { display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: .45; flex: 1; }
+.pe-item span { font-size: .72rem; font-weight: 700; color: var(--muted); }
+.pe-item.on { opacity: 1; }
+.pe-item.on span { color: var(--accent); }
+.m-shake-leve { animation: m-shake .35s linear infinite; }
+.av-corpo .range-row { grid-template-columns: auto 1fr 30px; gap: 8px; }
+.pe-item { opacity: .55; }

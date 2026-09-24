@@ -99,7 +99,7 @@
     }).join('')}</div>`;
   }
   function chipsVal(root, name) { return $$(`[data-chips="${name}"] .chip.on`, root).map((c) => c.dataset.v); }
-  function bindChips(root) { root.addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c && !c.classList.contains('static')) { c.classList.toggle('on'); c.dispatchEvent(new CustomEvent('chipchange', { bubbles: true })); } }); }
+  function bindChips(root) { if (!root || root._chipsOk) return; root._chipsOk = true; root.addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c && !c.classList.contains('static')) { c.classList.toggle('on'); c.dispatchEvent(new CustomEvent('chipchange', { bubbles: true })); } }); }
   function sel(name, opts, val, attrs) { return `<select name="${name}" ${attrs || ''}>${opts.map((o) => `<option value="${esc(o.id)}" ${o.id === val ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}</select>`; }
   function range(name, lbl, val, min, max, step) { return `<div class="range-row"><span class="lbl">${lbl}</span><input type="range" name="${name}" min="${min}" max="${max}" step="${step || 1}" value="${val}" oninput="this.nextElementSibling.value=this.value"><output>${val}</output></div>`; }
   function confirmar(msg) { return window.confirm(msg); }
@@ -320,7 +320,14 @@
         ${x.despejos && x.despejos.length ? `<details class="recipe" style="margin-top:10px" open><summary>Despejos executados (${x.despejos.length})</summary>${tabelaReceita({ etapas: x.despejos }, m, false)}</details>` : ''}
       </div>
 
-      ${window.Mascote ? (() => { const f = window.Mascote.porExtracao(x); return `<div style="margin-top:12px">${window.Mascote.card(f.humor, f.texto, { compacto: true })}</div>`; })() : ''}
+      ${window.Mascote ? (() => {
+        const f = window.Mascote.porExtracao(x), nv = window.Mascote.nivelExtracao(x), info = window.Mascote.NIVEIS[nv - 1];
+        return `<div class="card avaliacao-res" style="margin-top:12px">
+          <div class="avaliacao"><div class="av-fig">${window.Mascote.svg(info.humor, { size: 104 })}</div>
+          <div class="av-corpo"><span class="lbl">Avaliação do Pingo</span><div class="hero-num">${nv}<small style="font-size:.9rem">/5</small></div><strong>${esc(info.rotulo)}</strong><p class="text-2" style="margin:4px 0 0"><small>${esc(f.texto)}</small></p></div></div>
+          ${window.Mascote.escala(nv)}
+          <small class="muted">Combina a sua nota (70 %) com o equilíbrio da extração (30 %).</small></div>`;
+      })() : ''}
       <div class="card" style="margin-top:12px">
         <h3>Diagnóstico ${badgeDiag(x.diag)}</h3>
         ${barraExtracao(x.diag)}
@@ -402,6 +409,15 @@
         </div>
         <div class="card" style="margin-top:12px">
           <h3>Xícara</h3>
+          <div class="avaliacao" id="avaliacao">
+            <div class="av-fig" id="avFig">${window.Mascote ? window.Mascote.svg('pensativo', { size: 104 }) : ''}</div>
+            <div class="av-corpo">
+              <strong>Avalie essa extração</strong>
+              <div class="estrelas" id="estrelas">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="estrela" data-n="${n}" aria-label="${n} de 5">★</button>`).join('')}</div>
+              <small class="muted" id="avRotulo"></small>
+              <div class="range-row" style="margin:8px 0 0"><span class="lbl">Nota 0–10</span><input type="range" name="nota" min="0" max="10" step="0.5" value="6" oninput="this.nextElementSibling.value=this.value"><output>6</output></div>
+            </div>
+          </div>
           ${range('acidez', 'Acidez', 3, 1, 5)}
           ${range('docura', 'Doçura', 3, 1, 5)}
           ${range('amargor', 'Amargor', 3, 1, 5)}
@@ -411,13 +427,23 @@
           ${chipsSel('sinais', DB.sinais, [])}
           <div class="lbl" style="margin-top:12px">Descritores</div>
           ${chipsSel('descritores', DB.descritores, [])}
-          <div class="range-row" style="margin-top:12px"><span class="lbl">Nota (0–10)</span><input type="range" name="nota" min="0" max="10" step="0.5" value="7" oninput="this.nextElementSibling.value=this.value"><output>7</output></div>
           <label class="field"><span class="lbl">Observações</span><textarea name="obs" placeholder="bloom, despejos, canal, água usada…"></textarea></label>
           <label class="field"><span class="lbl">Quanto você bebeu? (diário de cafeína)</span>${sel('bebido', [{ id: '1', nome: 'Tudo' }, { id: '0.5', nome: 'Metade' }, { id: '0.25', nome: 'Um quarto / prova' }, { id: '0', nome: 'Não bebi (só calibração)' }], String(state.config.bebidoPadrao != null ? state.config.bebidoPadrao : '1'))}<div class="help" id="hCafeina"></div></label>
         </div>
         <div class="row" style="margin-top:14px"><button class="btn primary block" type="submit">Salvar e diagnosticar</button></div>
       </form>`;
     const f = $('#fNova');
+    // avaliação 1–5 com o Pingo, sincronizada com a nota fina
+    function pintarAvaliacao() {
+      const nota = +f.elements.nota.value, nv = window.Mascote ? window.Mascote.nivelPorNota(nota) : Math.max(1, Math.round(nota / 2));
+      $$('#estrelas .estrela', f).forEach((b) => b.classList.toggle('on', +b.dataset.n <= nv));
+      const info = window.Mascote ? window.Mascote.NIVEIS[nv - 1] : { humor: 'feliz', rotulo: '' };
+      $('#avRotulo', f).textContent = `${nv}/5 · ${info.rotulo}`;
+      if (window.Mascote) { const fig = $('#avFig', f); if (fig.dataset.h !== info.humor) { fig.dataset.h = info.humor; fig.innerHTML = window.Mascote.svg(info.humor, { size: 104 }); } }
+    }
+    $('#estrelas', f).addEventListener('click', (e) => { const b = e.target.closest('.estrela'); if (!b) return; const nota = +b.dataset.n * 2; f.elements.nota.value = nota; f.elements.nota.nextElementSibling.value = nota; pintarAvaliacao(); });
+    f.elements.nota.addEventListener('input', pintarAvaliacao);
+    setTimeout(pintarAvaliacao, 0);
     const F = (n) => f.elements[n];
 
     function ctx() { return { g: grao(F('graoId').value), m: metodo(F('metodoId').value), md: moedor(F('moedorId').value) }; }
@@ -513,7 +539,7 @@
       } else if (copiar) {
         aplicarReceita({ clicks: from.clicks, dose: from.dose, ratio: from.ratio, water: from.water, tempC: from.tempC, tempoS: from.tempoS });
         ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (from[k]) { F(k).value = from[k]; F(k).nextElementSibling.value = from[k]; } });
-        F('nota').value = from.nota || 7; F('nota').nextElementSibling.value = F('nota').value;
+        F('nota').value = from.nota || 6; F('nota').nextElementSibling.value = F('nota').value; setTimeout(pintarAvaliacao, 0);
         (from.sinais || []).forEach((s) => { const c = $(`[data-chips="sinais"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
         (from.descritores || []).forEach((s) => { const c = $(`[data-chips="descritores"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
         F('obs').value = from.obs || '';

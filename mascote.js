@@ -15,6 +15,7 @@
     arregalado: (x) => `<g class="m-eye"><circle cx="${x}" cy="63" r="6.5" fill="#fff" stroke="${INK}" stroke-width="2.4"/><circle cx="${x}" cy="63" r="2.2" fill="${INK}"/></g>`,
     triste: (x, lado) => `<g class="m-eye"><ellipse cx="${x}" cy="65" rx="4.2" ry="5.4" fill="${INK}"/><circle cx="${x + 1.4}" cy="63" r="1.5" fill="#fff"/></g><path d="M${x - 6} ${lado < 0 ? 55 : 57} L${x + 6} ${lado < 0 ? 57 : 55}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>`,
     olhandoCima: (x) => `<g class="m-eye"><ellipse cx="${x}" cy="64" rx="4.6" ry="6" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="${x + 1.5}" cy="60.8" r="2.6" fill="${INK}"/></g>`,
+    enjoado: (x, lado) => `<path d="M${x - 5} ${lado < 0 ? 60 : 66} L${x + 4} 63 L${x - 5} ${lado < 0 ? 66 : 60}" transform="${lado > 0 ? `translate(${2 * x} 0) scale(-1 1)` : ''}" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
     estrela: (x) => `<path d="M${x} 57 L${x + 1.9} 61.6 L${x + 6.6} 62 L${x + 3} 65.2 L${x + 4.1} 70 L${x} 67.4 L${x - 4.1} 70 L${x - 3} 65.2 L${x - 6.6} 62 L${x - 1.9} 61.6 Z" fill="${INK}"/>`
   };
   const BOCAS = {
@@ -25,6 +26,7 @@
     reta: `<path d="M55 79 H65" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>`,
     triste: `<path d="M53 81 Q60 75 67 81" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
     zigue: `<path d="M51 79 L55 76 L58 80 L62 76 L65 80 L69 77" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+    enjoo: `<path d="M51 80 Q54 76 57 80 Q60 84 63 80 Q66 76 69 80" stroke="${INK}" stroke-width="2.8" fill="none" stroke-linecap="round"/><path d="M57 81 Q60 88 63 81" fill="#e9848a" stroke="${INK}" stroke-width="1.6"/>`,
     lado: `<path d="M55 79 Q62 81 66 76" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/>`
   };
   const BRACO = { // [caminho, mão x, mão y]
@@ -41,6 +43,7 @@
     sonolento: { olhos: 'sono', boca: 'ozinho', be: 'baixoE', bd: 'baixoD', anim: 'm-sway', vapor: 1, zzz: true },
     dormindo: { olhos: 'fechado', boca: 'ozinho', be: 'baixoE', bd: 'baixoD', anim: 'm-sway', vapor: 0, zzz: true },
     agitado: { olhos: 'arregalado', boca: 'zigue', be: 'cimaE', bd: 'cimaD', anim: 'm-shake', vapor: 4, suor: true },
+    enjoado: { olhos: 'enjoado', boca: 'enjoo', be: 'queixoE', bd: 'baixoD', anim: 'm-shake-leve', vapor: 0, tremor: true },
     triste: { olhos: 'triste', boca: 'triste', be: 'baixoE', bd: 'baixoD', anim: 'm-droop', vapor: 1, lagrima: true }
   };
 
@@ -69,6 +72,7 @@
       </g>
       <g class="m-braco-e"><path d="${pe}" stroke="${INK}" stroke-width="3.4" fill="none" stroke-linecap="round"/><circle cx="${xe}" cy="${ye}" r="4.4" fill="${CUP}" stroke="${INK}" stroke-width="2.4"/></g>
       <g class="m-braco-d" style="transform-origin:88px 66px"><path d="${pd}" stroke="${INK}" stroke-width="3.4" fill="none" stroke-linecap="round"/><circle cx="${xd}" cy="${yd}" r="4.4" fill="${CUP}" stroke="${INK}" stroke-width="2.4"/></g>
+      ${h.tremor ? `<g stroke="#e7b64a" stroke-width="3" stroke-linecap="round"><path d="M14 60 l-6 -4"/><path d="M12 72 l-7 0"/><path d="M106 54 l6 -5"/><path d="M108 68 l7 1"/></g>` : ''}
       ${h.zzz ? `<g class="m-zzz" fill="${INK}" font-weight="800" font-family="system-ui,sans-serif"><text x="92" y="30" font-size="12">z</text><text x="100" y="20" font-size="15">Z</text></g>` : ''}
       ${h.brilho ? `<g class="m-spark" fill="#e7b64a"><path d="M18 22 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/><path d="M100 14 l1.5 4 4 1.5 -4 1.5 -1.5 4 -1.5 -4 -4 -1.5 4 -1.5z"/></g>` : ''}
     </svg>`;
@@ -109,5 +113,26 @@
     return { humor: 'triste', texto: `${score} pontos. Respira, solta o punho e tenta de novo.` };
   }
 
-  window.Mascote = { svg, card, porCafeina, porExtracao, porLatte, HUMORES: Object.keys(HUMORES), nome: 'Pingo' };
+  /* ---------- escala de avaliação 1–5 ---------- */
+  const NIVEIS = [
+    { n: 1, humor: 'enjoado', rotulo: 'Ruim, preciso mudar bastante' },
+    { n: 2, humor: 'triste', rotulo: 'Fraco, dá para melhorar' },
+    { n: 3, humor: 'pensativo', rotulo: 'Ok, bebível' },
+    { n: 4, humor: 'feliz', rotulo: 'Muito bom' },
+    { n: 5, humor: 'radiante', rotulo: 'Excelente, de campeonato!' }
+  ];
+  const nivelPorNota = (nota) => Math.max(1, Math.min(5, Math.round((Number(nota) || 0) / 2) || 1));
+  // combina a nota dada (70 %) com o equilíbrio da extração (30 %)
+  function nivelExtracao(x) {
+    const d = x.diag || {};
+    const pelaAnalise = d.misto ? 2 : Math.max(1, 5 - 4 * Math.abs(Number(d.indice) || 0));
+    if (x.nota == null || x.nota === '') return Math.round(pelaAnalise);
+    return Math.max(1, Math.min(5, Math.round((Number(x.nota) / 2) * 0.7 + pelaAnalise * 0.3)));
+  }
+  function escala(atual) {
+    return `<div class="pingo-escala" role="img" aria-label="Avaliação ${atual} de 5">${NIVEIS.map((nv) => `<div class="pe-item ${nv.n === atual ? 'on' : ''}">${svg(nv.humor, { size: nv.n === atual ? 52 : 38, anim: nv.n === atual })}<span>${nv.n}</span></div>`).join('')}</div>`;
+  }
+
+  window.Mascote = { svg, card, porCafeina, porExtracao, porLatte, NIVEIS, nivelPorNota, nivelExtracao, escala,
+ HUMORES: Object.keys(HUMORES), nome: 'Pingo' };
 })();
