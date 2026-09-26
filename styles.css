@@ -404,3 +404,76 @@ table.perfil td:first-child, table.perfil th:first-child { text-align: left; }
 table.perfil td.desvio { color: var(--sobre); font-weight: 700; }
 table.perfil td.ok { color: var(--ok); }
 .link-editar { font-size: .82rem; text-decoration: none; margin-left: 4px; }
+
+/* =====================================================================
+ * Redimensionamento: nada empurra a página para o lado
+ * ===================================================================== */
+html { overflow-x: hidden; }
+@supports (overflow: clip) { html, body { overflow-x: clip; } }
+body { overflow-wrap: break-word; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+img, svg, canvas, video { max-width: 100%; }
+.form-grid > *, .grid > *, .kv > *, .stats > *, .qa-grid > *, .row > *, .item > *, .avaliacao > *, .tmr-main > * { min-width: 0; }
+input, select, textarea { max-width: 100%; min-width: 0; }
+select { text-overflow: ellipsis; }
+/* iPhone/iPad: campos de data têm largura própria e estouram a coluna */
+@supports (-webkit-touch-callout: none) {
+  input[type=date], input[type=datetime-local], input[type=time] { -webkit-appearance: none; appearance: none; min-height: 44px; display: block; text-align: left; }
+}
+/* tabela de despejos: cabe na largura e com letra de 16 px (sem zoom automático no iPhone) */
+.pours { table-layout: fixed; }
+.pours th:nth-child(1), .pours td:nth-child(1) { width: 22px; }
+.pours th:nth-child(2), .pours td:nth-child(2) { width: 22%; }
+.pours th:nth-child(3), .pours td:nth-child(3) { width: 24%; }
+.pours th:last-child:empty, .pours td:last-child:has(.rm) { width: 30px; }
+.pours input { font-size: 16px !important; width: 100% !important; padding: 6px; }
+.pours td.text-2 { overflow-wrap: anywhere; }
+/* abas quebram linha em vez de rolar para o lado */
+.tabs { flex-wrap: wrap; overflow-x: visible; }
+/* avaliação: estrelas e Pingo encolhem em telas estreitas */
+.estrela { font-size: clamp(1.3rem, 7vw, 1.9rem); padding: 1px; }
+.av-fig .mascote { width: clamp(64px, 24vw, 104px); height: auto; }
+.pingo-fig .mascote { width: clamp(56px, 20vw, 92px); height: auto; }
+/* balões de dica dos gráficos quebram linha e ficam dentro do gráfico */
+.tip { white-space: normal; max-width: min(260px, 86vw); text-align: center; }
+.chart-box { overflow: visible; }
+/* tabelas largas viram cartões no celular */
+@media (max-width: 560px) {
+  table.tbl-stack thead { display: none; }
+  table.tbl-stack, table.tbl-stack tbody { display: block; }
+  table.tbl-stack tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  table.tbl-stack td { display: flex; justify-content: space-between; gap: 8px; border: 0; padding: 2px 0; min-width: 0; }
+  table.tbl-stack td::before { content: attr(data-label); color: var(--muted); font-size: .76rem; font-weight: 600; }
+  table.tbl-stack td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  table.tbl-stack td:first-child::before { content: none; }
+  .tbl-wrap:has(table.tbl-stack) { overflow-x: visible; }
+}
+/* telas muito estreitas (320 px) */
+@media (max-width: 359px) {
+  main#view { padding-left: 12px; padding-right: 12px; }
+  .card { padding: 12px; }
+  .qa-grid { gap: 8px; }
+  .quick-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+  .range-row { grid-template-columns: 88px 1fr 24px; gap: 8px; }
+  .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* celular deitado: timer em duas colunas, tudo à vista */
+@media (orientation: landscape) and (max-height: 540px) {
+  .sheet.sheet-full { width: 96vw; max-width: 96vw; max-height: 96vh; min-height: 0; border-radius: 16px; padding: 8px 14px 10px; }
+  .sheet.sheet-full .handle { display: none; }
+  .timer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-areas: "head head" "main instr" "main flow" "main steps" "main ctrl"; column-gap: 16px; align-items: start; }
+  .timer > .sheet-head { grid-area: head; margin-bottom: 4px; }
+  .timer .tmr-main { grid-area: main; margin: 0; grid-template-columns: 1fr 70px; }
+  .timer .tmr-ring { max-width: min(210px, 58vh); }
+  .timer .jar { height: min(150px, 42vh); width: 46px; }
+  .timer .tmr-instr { grid-area: instr; min-height: 0; }
+  .timer .tmr-flow { grid-area: flow; min-height: 0; margin: 4px 0; }
+  .timer .tmr-steps { grid-area: steps; max-height: 34vh; overflow: auto; margin: 4px 0 8px; }
+  .timer .tmr-ctrl { grid-area: ctrl; position: static; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .timer .tmr-ctrl .btn { padding: 8px 6px; font-size: .82rem; }
+  .timer .tmr-steps { max-height: 30vh; }
+  .timer .tmr-pingo, .timer > small { display: none; }
+  .sheet { max-height: 94vh; }
+}
+
+/* elementos escondidos continuam escondidos mesmo com estilo de botão */
+[hidden] { display: none !important; }

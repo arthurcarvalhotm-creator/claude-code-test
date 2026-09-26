@@ -134,6 +134,21 @@
   }
   function closeModal() { $('#modal').innerHTML = ''; document.body.style.overflow = ''; }
 
+  /* Tabelas .tbl-stack: cada célula recebe o título da coluna (vira cartão no celular) */
+  function rotularTabelas(root) {
+    $$('table.tbl-stack', root).forEach((t) => {
+      const th = $$('thead th', t).map((h) => h.textContent.trim());
+      $$('tbody tr', t).forEach((tr) => Array.from(tr.children).forEach((td, i) => { if (th[i] && !td.dataset.label) td.dataset.label = th[i]; }));
+    });
+  }
+  /* Mantém o balão de dica dentro do gráfico (não empurra a página para o lado) */
+  function posicionarDica(tip, box, x, y) {
+    const bw = box.clientWidth, tw = tip.offsetWidth;
+    tip.style.left = Math.max(tw / 2 + 2, Math.min(bw - tw / 2 - 2, x)) + 'px';
+    tip.style.top = y + 'px';
+  }
+  window.__posicionarDica = posicionarDica;
+
   /* ---------------- Router ---------------- */
   const routes = {};
   let histStack = [];
@@ -155,6 +170,7 @@
     $('#btnBack').hidden = top;
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === r.name || (r.name === 'grao' && a.dataset.route === 'graos') || (r.name === 'extracao' && a.dataset.route === 'diario') || (['moedores', 'biblioteca', 'ajustes', 'cafeina', 'latte'].includes(r.name) && a.dataset.route === 'mais')));
     fn(view, r);
+    rotularTabelas(view);
     bindChips(view);
     window.scrollTo(0, 0);
   }
@@ -802,7 +818,7 @@
       ` : `<div class="card soft"><p>Nenhuma extração registrada. Métodos indicados para este terroir:</p><div class="chips">${sugeridos.map((m) => `<a class="chip" href="#/nova?grao=${g.id}&metodo=${m.id}">${m.icone} ${esc(m.nome)}</a>`).join('')}</div></div>`}
 
       <div class="section-title"><h2>Pontos de partida por método</h2></div>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Método</th><th>Razão</th><th>Temp.</th><th>Moagem</th><th>Tempo</th></tr></thead><tbody>
+      <div class="tbl-wrap"><table class="tbl tbl-stack"><thead><tr><th>Método</th><th>Razão</th><th>Temp.</th><th>Moagem</th><th>Tempo</th></tr></thead><tbody>
         ${DB.metodos.map((m) => { const md = state.moedores[0]; const sp = E.startingPoint(g, m, md); return `<tr><td>${m.icone} ${esc(m.nome)}${reg.metodos.includes(m.id) ? ' <span class="badge ok">indicado</span>' : ''}</td><td>1:${sp.ratio}</td><td>${sp.tempC} °C</td><td>${sp.clicks != null ? E.fmtClicks(sp.clicks) + ' cl' : m.grindDesc}</td><td>${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</td></tr>`; }).join('')}
       </tbody></table></div>
       ${state.moedores.length ? `<small class="muted">Cliques calculados para ${esc(state.moedores[0].nome)}.</small>` : '<small class="muted">Cadastre um moedor para ver cliques.</small>'}
@@ -812,7 +828,7 @@
   };
 
   function tabelaExtracoes(xs) {
-    return `<div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>#</th><th>Data</th><th>Cliques</th><th>Razão</th><th>°C</th><th>Tempo</th><th>Nota</th><th>Diagnóstico</th></tr></thead><tbody>
+    return `<div class="tbl-wrap" style="margin-top:10px"><table class="tbl tbl-stack"><thead><tr><th>#</th><th>Data</th><th>Cliques</th><th>Razão</th><th>°C</th><th>Tempo</th><th>Nota</th><th>Diagnóstico</th></tr></thead><tbody>
       ${xs.map((x, i) => `<tr style="cursor:pointer" onclick="location.hash='#/extracao/${x.id}'"><td>${i + 1}</td><td>${new Date(x.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</td><td>${x.clicks != null ? E.fmtClicks(x.clicks) : '—'}</td><td>1:${x.ratio}</td><td>${x.tempC}</td><td>${E.fmtTempo(x.tempoS)}</td><td><strong>${x.nota != null ? Number(x.nota).toFixed(1) : '—'}</strong></td><td>${badgeDiag(x.diag)}</td></tr>`).join('')}
     </tbody></table></div>`;
   }
@@ -846,7 +862,7 @@
       ${axes.map((a, i) => { const [x, y] = P(i, 6.1); return `<text x="${x}" y="${y + 4}" text-anchor="middle">${a[1]}</text>`; }).join('')}
     </svg>${series.length > 1 ? `<div class="legend" style="justify-content:center">${series.map((s) => `<span style="--c:${s.cls === 'b' ? 'var(--teal)' : 'var(--accent)'}">${esc(s.nome)}</span>`).join('')}</div>` : ''}</div>`;
   }
-  document.addEventListener('mouseover', (e) => { const h = e.target.closest('.hit'); if (!h) return; const box = h.closest('.chart-box'); let t = $('.tip', box); if (!t) { t = document.createElement('div'); t.className = 'tip'; box.appendChild(t); } t.textContent = h.dataset.tip; const r = h.getBoundingClientRect(), b = box.getBoundingClientRect(); t.style.left = r.left - b.left + r.width / 2 + 'px'; t.style.top = r.top - b.top + 'px'; });
+  document.addEventListener('mouseover', (e) => { const h = e.target.closest('.hit'); if (!h) return; const box = h.closest('.chart-box'); let t = $('.tip', box); if (!t) { t = document.createElement('div'); t.className = 'tip'; box.appendChild(t); } t.textContent = h.dataset.tip; const r = h.getBoundingClientRect(), b = box.getBoundingClientRect(); posicionarDica(t, box, r.left - b.left + r.width / 2, r.top - b.top); });
   document.addEventListener('mouseout', (e) => { if (e.target.closest && e.target.closest('.hit')) { const t = $('.tip', e.target.closest('.chart-box')); if (t) t.remove(); } });
   document.addEventListener('click', (e) => { const h = e.target.closest('.hit'); if (h) toast(h.dataset.tip); });
 
@@ -929,7 +945,7 @@
       <p><strong>Moagem:</strong> ${esc(x.grindDesc)} (~${x.microns[0]}–${x.microns[1]} µm)</p>
       <p><strong>Sensibilidade:</strong> ${esc(x.sensibilidade)}</p><p><strong>Receita base:</strong> ${esc(x.receita)}</p></div></details>`).join('');
     if (tab === 'receitas') body = DB.metodos.filter((x) => DB.receitas[x.id] && match(x.nome)).map((x) => { const rc = E.receita(x, x.dosePadrao, Math.round(x.dosePadrao * x.ratio.padrao)); return `<details class="lib"><summary>${x.icone} ${esc(x.nome)} <span class="badge">${x.dosePadrao} g / ${rc.total} g</span></summary><div class="body"><p><strong>${esc(rc.nome)}</strong> · ${x.tempC.padrao} °C · moagem ${esc(x.grindDesc)}</p>${tabelaReceita(rc, x, false)}<p style="margin-top:8px">💡 ${esc(x.sensibilidade)}</p></div></details>`; }).join('');
-    if (tab === 'indicacoes') body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perfil do grão</th><th>Métodos</th><th>Razão</th><th>Temp.</th><th>Torra</th></tr></thead><tbody>${DB.indicacoesPerfil.filter((x) => match(x.perfil)).map((x) => `<tr><td>${esc(x.perfil)}</td><td>${x.metodos.map((m) => metodo(m).icone + ' ' + metodo(m).nome.split(' (')[0]).join('<br>')}</td><td>${esc(x.razao)}</td><td>${esc(x.tempC)}</td><td>${esc(x.torra)}</td></tr>`).join('')}</tbody></table></div>
+    if (tab === 'indicacoes') body = `<div class="tbl-wrap"><table class="tbl tbl-stack"><thead><tr><th>Perfil do grão</th><th>Métodos</th><th>Razão</th><th>Temp.</th><th>Torra</th></tr></thead><tbody>${DB.indicacoesPerfil.filter((x) => match(x.perfil)).map((x) => `<tr><td>${esc(x.perfil)}</td><td>${x.metodos.map((m) => metodo(m).icone + ' ' + metodo(m).nome.split(' (')[0]).join('<br>')}</td><td>${esc(x.razao)}</td><td>${esc(x.tempC)}</td><td>${esc(x.torra)}</td></tr>`).join('')}</tbody></table></div>
       <div class="card soft" style="margin-top:12px"><h3>Escala de moagem</h3><table class="tbl">${DB.grindEscala.map((g) => `<tr><td>${g.n}</td><td><strong>${g.nome}</strong></td><td>${esc(g.ex)}</td></tr>`).join('')}</table></div>`;
     view.innerHTML = `<input class="search" type="text" id="q" placeholder="Buscar…" value="${esc(r.q.q || '')}">
       <div class="tabs">${tabs.map(([id, n]) => `<button class="tab ${id === tab ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div>

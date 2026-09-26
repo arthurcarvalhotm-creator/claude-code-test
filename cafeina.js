@@ -152,8 +152,7 @@
       const x = c.X(best[0]), y = c.Y(best[1]);
       g.style.display = ''; root.querySelector('#cfHl').setAttribute('x1', x); root.querySelector('#cfHl').setAttribute('x2', x);
       root.querySelector('#cfHd').setAttribute('cx', x); root.querySelector('#cfHd').setAttribute('cy', y);
-      tip.style.display = ''; tip.style.left = (x / c.W * r.width) + 'px'; tip.style.top = (y / svg.viewBox.baseVal.height * r.height) + 'px';
-      tip.textContent = `${hhmm(best[0])} · ${Math.round(best[1])} mg no corpo · ${(best[1] / c.par.vd).toFixed(1).replace('.', ',')} mg/L`;
+      tip.style.display = ''; tip.textContent = `${hhmm(best[0])} · ${Math.round(best[1])} mg no corpo · ${(best[1] / c.par.vd).toFixed(1).replace('.', ',')} mg/L`; window.__posicionarDica(tip, box, x / c.W * r.width, y / svg.viewBox.baseVal.height * r.height);
     };
     const sair = () => { g.style.display = 'none'; tip.style.display = 'none'; };
     const hit = root.querySelector('#cfHit');
