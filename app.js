@@ -55,6 +55,10 @@
       });
       state.config.moedoresVersao = 4; save();
     }
+    if ((state.config.moedoresVersao || 0) < 5) { // µm por clique: tamanho realista dos ajustes de moagem
+      DB.moedoresModelo.filter((mm) => mm.id && mm.umPorClique).forEach((mm) => { const m = state.moedores.find((x) => x.modeloId === mm.id); if (m && !m.umPorClique) m.umPorClique = mm.umPorClique; });
+      state.config.moedoresVersao = 5; save();
+    }
     if (!state.config.estoqueMigrado) {
       state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
       state.config.estoqueMigrado = true; save();
@@ -73,7 +77,7 @@
       .sort((a, b) => new Date(a.data) - new Date(b.data))
       .map(withDiag);
   }
-  function withDiag(x) { const m = metodo(x.metodoId); if (m && !x.diag) x.diag = E.diagnose(x, m); return x; }
+  function withDiag(x) { const m = metodo(x.metodoId); if (m) x.diag = E.diagnose(x, m, grao(x.graoId)); return x; }
 
   /* ---------------- Utilidades UI ---------------- */
   let toastT;
@@ -81,6 +85,7 @@
   function fmtData(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
   function fmtDia(iso) { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); }
   function nowLocal() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+  function isoLocal(iso) { const d = new Date(iso); if (isNaN(d)) return nowLocal(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
   function parseTempo(s) {
     s = String(s || '').trim().toLowerCase().replace(',', '.'); if (!s) return null;
     let m;
@@ -301,17 +306,17 @@
     const hist = historico(x.graoId, x.metodoId, x.moedorId);
     const idx = hist.findIndex((h) => h.id === x.id);
     const antes = hist.slice(0, Math.max(0, idx));
-    const reco = E.recommend(x, antes, m, md, g || {});
+    const reco = E.recommend(x, antes, m, md, g || {}, { notaAlvo: state.config.notaAlvo });
     view.innerHTML = `
       <div class="card">
-        <div class="row between"><div><h2>${esc(nomeGrao(g))}</h2><small>${m.icone} ${esc(m.nome)} · ${md ? esc(md.nome) : 'sem moedor'} · ${fmtData(x.data)}</small></div>
+        <div class="row between"><div><h2>${esc(nomeGrao(g))}</h2><small>${m.icone} ${esc(m.nome)} · ${md ? esc(md.nome) : 'sem moedor'} · ${fmtData(x.data)}${x.editadoEm ? ' · editado' : ''}</small> <a href="#/nova?editar=${x.id}" class="link-editar">✏️ editar</a></div>
           <div class="right"><div class="hero-num">${x.nota !== '' && x.nota != null ? Number(x.nota).toFixed(1) : '—'}</div><small>nota</small></div></div>
         <div class="kv" style="margin-top:10px">
           ${x.clicks != null ? `<div><span class="lbl">Moagem</span><div class="v">${E.fmtClicks(x.clicks)} cl</div></div>` : ''}
           <div><span class="lbl">Dose</span><div class="v">${x.dose} g</div></div>
           <div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v">${x.water} g</div></div>
-          <div><span class="lbl">Razão</span><div class="v">1:${x.ratio}</div></div>
-          <div><span class="lbl">Temperatura</span><div class="v">${x.tempC} °C</div></div>
+          <div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(x.ratio)}</div></div>
+          <div><span class="lbl">Temperatura</span><div class="v">${E.fmtN(x.tempC)} °C</div></div>
           <div><span class="lbl">Tempo</span><div class="v">${E.fmtTempo(x.tempoS)}</div></div>
           ${x.tds ? `<div><span class="lbl">TDS / EY</span><div class="v">${x.tds} % / ${x.diag.ey != null ? x.diag.ey + ' %' : '—'}</div></div>` : ''}
         </div>
@@ -331,15 +336,17 @@
       <div class="card" style="margin-top:12px">
         <h3>Diagnóstico ${badgeDiag(x.diag)}</h3>
         ${barraExtracao(x.diag)}
-        ${radar([{ nome: 'Esta extração', v: sens(x), cls: 'a' }])}
+        ${radar([{ nome: 'Esta extração', v: sens(x), cls: 'a' }].concat(x.diag.leitura ? [{ nome: 'Perfil esperado do grão', v: x.diag.leitura.esperado, cls: 'b' }] : []))}
+        ${perfilHtml(x.diag.leitura)}
         ${x.diag.fatores.length ? `<ul class="factors">${x.diag.fatores.map((f) => `<li>${f.v < 0 ? '🔵' : f.v > 0 ? '🟠' : '⚪'} ${esc(f.t)}${f.forca ? ` (força ${f.forca > 0 ? '↑' : '↓'})` : ''}</li>`).join('')}</ul>` : '<small class="muted">Nenhum sinal de desequilíbrio registrado.</small>'}
       </div>
 
       ${cardReco(reco, m, x)}
 
       <div class="row" style="margin-top:12px">
-        <button class="btn danger sm" id="del">Excluir</button>
+        <a class="btn primary sm" href="#/nova?editar=${x.id}">✏️ Editar registro</a>
         <button class="btn sm" id="dup">Duplicar como nova</button>
+        <button class="btn danger sm" id="del">Excluir</button>
       </div>`;
     $('#del').onclick = () => { if (confirmar('Excluir esta extração?')) { state.extracoes = state.extracoes.filter((e) => e.id !== x.id); hooks.extracaoExcluida.forEach((fn) => fn(x)); save(); toast('Excluída'); go('#/diario'); } };
     $('#dup').onclick = () => go(`#/nova?from=${x.id}&copiar=1`);
@@ -350,19 +357,35 @@
     const pct = 50 + d.indice * 45;
     return `<div class="bar" title="Índice de extração ${d.indice}"><div class="pin" style="left:${pct}%"></div></div><div class="bar-lbl"><span>sub-extração</span><span>equilíbrio</span><span>sobre-extração</span></div>`;
   }
+  /* ---------- Recomendação: ações com o porquê ---------- */
+  const ICONES = { moagem: '⚙️', temperatura: '🌡️', razão: '⚖️', tempo: '⏱️', técnica: '🖐️', nota: 'ℹ️', ok: '✅' };
+  function acoesHtml(reco) {
+    const tag = { secundario: 'e também', alternativa: 'alternativa' };
+    return reco.acoes.map((a) => `<div class="acao t-${a.tipo || 'info'}"><div class="k">${ICONES[a.alvo] || '•'}</div><div>${tag[a.tipo] ? `<span class="acao-tag">${tag[a.tipo]}</span> ` : ''}<span class="acao-txt">${esc(a.txt)}</span>${a.por ? `<div class="acao-por">${esc(a.por)}</div>` : ''}</div></div>`).join('');
+  }
+  function leituraHtml(reco) { return reco.leitura ? `<div class="leitura">🔎 ${esc(reco.leitura)}</div>` : ''; }
+  /* Perfil esperado do grão × o que você sentiu */
+  function perfilHtml(L) {
+    if (!L) return '';
+    const seta = (d) => (d >= 1.5 ? '▲▲' : d >= 1 ? '▲' : d <= -1.5 ? '▼▼' : d <= -1 ? '▼' : '✓');
+    return `<div class="tbl-wrap" style="margin-top:8px"><table class="tbl perfil"><thead><tr><th></th><th>Esperado</th><th>Você sentiu</th><th></th></tr></thead><tbody>
+      ${E.ATRIBUTOS.map(([k, nome]) => `<tr><td>${nome}</td><td>${E.fmtN(L.esperado[k])}</td><td><strong>${L.percebido[k]}</strong></td><td class="${Math.abs(L.desvio[k]) >= 1 ? 'desvio' : 'ok'}">${seta(L.desvio[k])}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="text-2" style="margin:6px 0 0"><small>Esperado para ${esc(L.esperado.reg.id !== 'outra' ? L.esperado.reg.nome : 'este grão')}${L.esperado.proc ? ' · ' + esc(L.esperado.proc.nome.split(' (')[0].toLowerCase()) : ''} · torra ${esc(L.esperado.torra.nome.toLowerCase())}${L.esperado.notas.length ? ` · notas: ${L.esperado.notas.map(esc).join(', ')}` : ''}${L.notasPercebidas.length ? `<br>Você sentiu: ${L.notasPercebidas.map(esc).join(', ')}` : ''}</small></p>`;
+  }
   function cardReco(reco, m, x) {
-    const icons = { moagem: '⚙️', temperatura: '🌡️', razão: '⚖️', técnica: '🖐️', nota: 'ℹ️', ok: '✅' };
     const p = reco.prox;
     return `<div class="card reco ${reco.status === 'calibrado' ? 'ok' : reco.diag.cor}" style="margin-top:12px">
       <div class="row between"><h3>Próxima extração</h3><span class="badge ${reco.status === 'calibrado' ? 'ok' : 'accent'}">${reco.status === 'calibrado' ? 'calibrado' : 'ajustando'} · confiança ${Math.round(reco.confianca * 100)} %</span></div>
-      ${reco.acoes.map((a) => `<div class="acao"><div class="k">${icons[a.alvo] || '•'}</div><div>${esc(a.txt)}</div></div>`).join('')}
+      ${leituraHtml(reco)}
+      ${acoesHtml(reco)}
       <div class="kv" style="margin-top:10px">
         ${p.clicks != null ? `<div><span class="lbl">Moagem</span><div class="v">${E.fmtClicks(p.clicks)} cl</div></div>` : ''}
         <div><span class="lbl">Dose</span><div class="v">${p.dose} g</div></div>
         <div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v">${p.water} g</div></div>
-        <div><span class="lbl">Razão</span><div class="v">1:${p.ratio}</div></div>
-        ${m.id !== 'cold-brew' ? `<div><span class="lbl">Temperatura</span><div class="v">${p.tempC} °C</div></div>` : ''}
-        <div><span class="lbl">Tempo alvo</span><div class="v">${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</div></div>
+        <div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(p.ratio)}</div></div>
+        ${m.id !== 'cold-brew' ? `<div><span class="lbl">Temperatura</span><div class="v">${E.fmtN(p.tempC)} °C</div></div>` : ''}
+        <div><span class="lbl">${E.tipoMetodo(m) === 'imersao' ? 'Tempo de imersão' : 'Tempo alvo'}</span><div class="v">${E.tipoMetodo(m) === 'imersao' ? E.fmtTempo(p.tempoS) : `${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}`}</div></div>
       </div>
       ${(() => { const rc = E.receita(m, p.dose, p.water); return rc ? `<details class="recipe" style="margin-top:10px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
       ${x ? `<div class="inline-actions"><a class="btn primary" href="#/nova?from=${x.id}">Preparar com esta receita →</a></div>` : ''}
@@ -371,9 +394,11 @@
 
   /* ======================= NOVA EXTRAÇÃO ======================= */
   routes.nova = (view, r) => {
-    $('#title').textContent = 'Nova extração';
+    const editando = r.q.editar ? extracao(r.q.editar) : null;
+    if (r.q.editar && !editando) { view.innerHTML = '<div class="empty">Extração não encontrada.</div>'; return; }
+    $('#title').textContent = editando ? 'Editar extração' : 'Nova extração';
     if (!state.graos.length) { view.innerHTML = `<div class="empty"><div class="big">${BEAN}</div>Cadastre um grão antes de registrar extrações.<div style="margin-top:12px"><a class="btn primary" href="#/graos?novo=1">Cadastrar grão</a></div></div>`; return; }
-    const from = r.q.from ? extracao(r.q.from) : null;
+    const from = editando || (r.q.from ? extracao(r.q.from) : null);
     const copiar = !!r.q.copiar, repetir = !!r.q.repetir;
     const pre = {
       graoId: (from && from.graoId) || r.q.grao || state.graos[0].id,
@@ -387,7 +412,7 @@
             <label class="field"><span class="lbl">Grão</span>${sel('graoId', state.graos.filter((g) => !g.arquivado || g.id === pre.graoId).map((g) => ({ id: g.id, nome: g.nome })), pre.graoId)}</label>
             <label class="field"><span class="lbl">Método</span>${sel('metodoId', DB.metodos.map((m) => ({ id: m.id, nome: `${m.icone} ${m.nome}` })), pre.metodoId)}</label>
             <label class="field"><span class="lbl">Moedor</span>${sel('moedorId', [{ id: '', nome: '— sem moedor —' }].concat(state.moedores.map((m) => ({ id: m.id, nome: m.nome }))), pre.moedorId)}</label>
-            <label class="field"><span class="lbl">Data e hora</span><input type="datetime-local" name="data" value="${nowLocal()}"></label>
+            <label class="field"><span class="lbl">Data e hora</span><input type="datetime-local" name="data" value="${editando ? isoLocal(editando.data) : nowLocal()}"></label>
           </div>
         </div>
         <div id="sugestao"></div>
@@ -418,6 +443,7 @@
               <div class="range-row" style="margin:8px 0 0"><span class="lbl">Nota 0–10</span><input type="range" name="nota" min="0" max="10" step="0.5" value="6" oninput="this.nextElementSibling.value=this.value"><output>6</output></div>
             </div>
           </div>
+          <div class="help" id="hPerfil" style="margin:-4px 0 10px"></div>
           ${range('acidez', 'Acidez', 3, 1, 5)}
           ${range('docura', 'Doçura', 3, 1, 5)}
           ${range('amargor', 'Amargor', 3, 1, 5)}
@@ -430,7 +456,7 @@
           <label class="field"><span class="lbl">Observações</span><textarea name="obs" placeholder="bloom, despejos, canal, água usada…"></textarea></label>
           <label class="field"><span class="lbl">Quanto você bebeu? (diário de cafeína)</span>${sel('bebido', [{ id: '1', nome: 'Tudo' }, { id: '0.5', nome: 'Metade' }, { id: '0.25', nome: 'Um quarto / prova' }, { id: '0', nome: 'Não bebi (só calibração)' }], String(state.config.bebidoPadrao != null ? state.config.bebidoPadrao : '1'))}<div class="help" id="hCafeina"></div></label>
         </div>
-        <div class="row" style="margin-top:14px"><button class="btn primary block" type="submit">Salvar e diagnosticar</button></div>
+        <div class="row" style="margin-top:14px"><button class="btn primary block" type="submit">${editando ? 'Salvar alterações' : 'Salvar e diagnosticar'}</button>${editando ? `<a class="btn block" href="#/extracao/${editando.id}" style="justify-content:center">Cancelar</a>` : ''}</div>
       </form>`;
     const f = $('#fNova');
     // avaliação 1–5 com o Pingo, sincronizada com a nota fina
@@ -445,6 +471,16 @@
     f.elements.nota.addEventListener('input', pintarAvaliacao);
     setTimeout(pintarAvaliacao, 0);
     const F = (n) => f.elements[n];
+    // controles de paladar começam no perfil esperado do grão: só conta o que você mover
+    let sensTocado = false;
+    ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => F(k).addEventListener('input', () => { sensTocado = true; }));
+    function aplicarPerfilEsperado() {
+      const { g, m } = ctx(); if (!g || !m) return;
+      const Ep = E.perfilEsperado(g, m);
+      $('#hPerfil').textContent = `Perfil esperado deste grão: acidez ${E.fmtN(Ep.acidez)}, doçura ${E.fmtN(Ep.docura)}, amargor ${E.fmtN(Ep.amargor)}, corpo ${E.fmtN(Ep.corpo)}${Ep.notas.length ? ' · notas: ' + Ep.notas.slice(0, 4).join(', ') : ''}. ${sensTocado ? 'Compare com o que você sentiu.' : 'Os controles começam nele: mova só o que você sentiu diferente.'}`;
+      if (sensTocado) return;
+      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { const v = Math.min(5, Math.max(1, Math.round(Ep[k]))); F(k).value = v; F(k).nextElementSibling.value = v; });
+    }
 
     function ctx() { return { g: grao(F('graoId').value), m: metodo(F('metodoId').value), md: moedor(F('moedorId').value) }; }
     function aplicarReceita(p) {
@@ -489,16 +525,18 @@
       $('#hTempo').textContent = `Faixa do método: ${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}`;
       if (md) { F('clicks').min = md.min; F('clicks').max = md.max; F('clicks').step = md.passo || 1; $('#hClicks').textContent = `${md.nome}: ${md.min}–${md.max}, passo ${md.passo || 1} (${md.direcao === 'maior=fino' ? 'maior = mais fino' : 'menor = mais fino'})`; }
       else $('#hClicks').textContent = 'Cadastre um moedor para receber cliques exatos.';
+      if (editando) { $('#sugestao').innerHTML = `<div class="card soft" style="margin-top:12px"><strong>✏️ Editando o registro de ${fmtData(editando.data)}</strong><div class="help">Corrija o que for preciso e salve. O diagnóstico e as recomendações são recalculados com os novos valores.</div></div>`; return null; }
       const hist = historico(g.id, m.id, md ? md.id : '');
       let html, receita;
       if (hist.length) {
         const ult = hist[hist.length - 1];
-        const reco = E.recommend(ult, hist.slice(0, -1), m, md, g);
+        const reco = E.recommend(ult, hist.slice(0, -1), m, md, g, { notaAlvo: state.config.notaAlvo });
         receita = reco.prox;
         html = `<div class="card reco ${reco.status === 'calibrado' ? 'ok' : reco.diag.cor}" style="margin-top:12px">
           <div class="row between"><h3>Recomendação (${hist.length} extração(ões) anteriores)</h3><span class="badge ${reco.status === 'calibrado' ? 'ok' : 'accent'}">${reco.status}</span></div>
           <small>Última: ${fmtData(ult.data)} · nota ${ult.nota || '—'} · ${esc(ult.diag.rotulo)}</small>
-          ${reco.acoes.map((a) => `<div class="acao"><div class="k">•</div><div>${esc(a.txt)}</div></div>`).join('')}
+          ${leituraHtml(reco)}
+          ${acoesHtml(reco)}
           ${(() => { const rc = E.receita(m, reco.prox.dose, reco.prox.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
           <div class="inline-actions"><button class="btn primary sm" type="button" id="usar">Usar esta receita</button><a class="btn sm" href="#/extracao/${ult.id}">Ver última</a></div>
         </div>`;
@@ -524,13 +562,31 @@
       $('#usar').onclick = () => { aplicarReceita(receita); toast('Receita aplicada aos campos'); };
       return receita;
     }
-    ['graoId', 'metodoId', 'moedorId'].forEach((n) => F(n).addEventListener('change', () => { const rec = renderSugestao(); if (!F('dose').value) aplicarReceita(rec); }));
+    ['graoId', 'metodoId', 'moedorId'].forEach((n) => F(n).addEventListener('change', () => { const rec = renderSugestao(); if (rec && !F('dose').value) aplicarReceita(rec); aplicarPerfilEsperado(); }));
     F('ratio').addEventListener('input', () => { const d = +F('dose').value, rt = +F('ratio').value; if (d && rt) F('water').value = E.isEspresso(ctx().m) ? Math.round(d * rt * 10) / 10 : Math.round(d * rt); });
     const recalcRatio = () => { const d = +F('dose').value, w = +F('water').value; if (d && w) F('ratio').value = Math.round((w / d) * 100) / 100; };
     F('dose').addEventListener('input', recalcRatio); F('water').addEventListener('input', recalcRatio);
 
     const rec0 = renderSugestao();
-    if (from) {
+    function preencherSensorial(src) {
+      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (src[k]) { F(k).value = src[k]; F(k).nextElementSibling.value = src[k]; } });
+      F('nota').value = src.nota != null && src.nota !== '' ? src.nota : 6; F('nota').nextElementSibling.value = F('nota').value; setTimeout(pintarAvaliacao, 0);
+      $$('[data-chips="sinais"] .chip, [data-chips="descritores"] .chip', f).forEach((c) => c.classList.remove('on'));
+      (src.sinais || []).forEach((s) => { const c = $(`[data-chips="sinais"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
+      (src.descritores || []).forEach((s) => { const c = $(`[data-chips="descritores"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
+      F('obs').value = src.obs || '';
+      sensTocado = true;
+    }
+    if (editando) {
+      aplicarReceita({ clicks: editando.clicks, dose: editando.dose, ratio: editando.ratio, water: editando.water, tempC: editando.tempC, tempoS: null });
+      if (editando.clicks == null || editando.clicks === '') F('clicks').value = '';
+      F('tempo').value = editando.tempoS ? E.fmtTempo(editando.tempoS).replace(' s', '').replace(' h', 'h') : '';
+      F('tds').value = editando.tds != null ? editando.tds : '';
+      $('#pours').innerHTML = editando.despejos && editando.despejos.length ? tabelaReceita({ etapas: editando.despejos }, ctx().m, true) : '';
+      preencherSensorial(editando);
+      F('bebido').value = String(editando.bebido != null ? editando.bebido : 1);
+      hintCafeina();
+    } else if (from) {
       if (repetir) {
         aplicarReceita({ clicks: from.clicks, dose: from.dose, ratio: from.ratio, water: from.water, tempC: from.tempC, tempoS: from.tempoS });
         if (from.despejos && from.despejos.length) $('#pours').innerHTML = tabelaReceita({ etapas: from.despejos }, ctx().m, true);
@@ -538,25 +594,22 @@
         toast('Receita da última extração carregada');
       } else if (copiar) {
         aplicarReceita({ clicks: from.clicks, dose: from.dose, ratio: from.ratio, water: from.water, tempC: from.tempC, tempoS: from.tempoS });
-        ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (from[k]) { F(k).value = from[k]; F(k).nextElementSibling.value = from[k]; } });
-        F('nota').value = from.nota || 6; F('nota').nextElementSibling.value = F('nota').value; setTimeout(pintarAvaliacao, 0);
-        (from.sinais || []).forEach((s) => { const c = $(`[data-chips="sinais"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
-        (from.descritores || []).forEach((s) => { const c = $(`[data-chips="descritores"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
-        F('obs').value = from.obs || '';
+        preencherSensorial(from);
         if (from.despejos && from.despejos.length) $('#pours').innerHTML = tabelaReceita({ etapas: from.despejos }, ctx().m, true);
       } else {
         aplicarReceita(rec0); F('tempo').value = '';
       }
     } else aplicarReceita(rec0);
+    aplicarPerfilEsperado();
 
     f.addEventListener('submit', (e) => {
       e.preventDefault();
       const { g, m, md } = ctx();
       const tempoS = parseTempo(F('tempo').value);
       if (F('tempo').value && tempoS == null) { toast('Tempo inválido. Use 2:45, 28 ou 14h.'); F('tempo').focus(); return; }
-      const dt = F('data').value ? new Date(F('data').value).toISOString() : new Date().toISOString();
+      const dt = editando && F('data').value === isoLocal(editando.data) ? editando.data : F('data').value ? new Date(F('data').value).toISOString() : new Date().toISOString();
       const x = {
-        id: uid(), data: dt, graoId: g.id, metodoId: m.id, moedorId: md ? md.id : '',
+        id: editando ? editando.id : uid(), data: dt, graoId: g.id, metodoId: m.id, moedorId: md ? md.id : '',
         clicks: F('clicks').value === '' ? null : +F('clicks').value,
         dose: +F('dose').value, water: +F('water').value, ratio: +F('ratio').value || Math.round((+F('water').value / +F('dose').value) * 100) / 100,
         tempC: +F('tempC').value, tempoS: tempoS, tds: F('tds').value ? +F('tds').value : null,
@@ -565,7 +618,18 @@
         despejos: lerDespejos(f), bebido: +F('bebido').value
       };
       if (E.isEspresso(m)) x.yieldG = x.water;
-      x.diag = E.diagnose(x, m);
+      x.diag = E.diagnose(x, m, g);
+      if (editando) {
+        const i = state.extracoes.findIndex((e) => e.id === editando.id);
+        const novo = Object.assign({}, editando, x, { editadoEm: new Date().toISOString() });
+        if (!E.isEspresso(m)) delete novo.yieldG;
+        state.extracoes[i] = novo;
+        hooks.extracaoEditada.forEach((fn) => fn(novo, g, m, editando));
+        save();
+        toast('Registro atualizado');
+        go(`#/extracao/${novo.id}`);
+        return;
+      }
       state.extracoes.push(x);
       hooks.extracaoSalva.forEach((fn) => fn(x, g, m));
       save();
@@ -734,7 +798,7 @@
         ${radar([{ nome: 'Última', v: sens(ultimo), cls: 'a' }].concat(melhor && melhor.id !== ultimo.id ? [{ nome: 'Melhor', v: sens(melhor), cls: 'b' }] : []))}
         ${tabelaExtracoes(xsM)}
       </div>
-      ${(() => { const md = moedor(ultimo.moedorId); const reco = E.recommend(ultimo, xsM.slice(0, -1).filter((x) => x.moedorId === ultimo.moedorId), metodo(mSel), md, g); return cardReco(reco, metodo(mSel), ultimo); })()}
+      ${(() => { const md = moedor(ultimo.moedorId); const reco = E.recommend(ultimo, xsM.slice(0, -1).filter((x) => x.moedorId === ultimo.moedorId), metodo(mSel), md, g, { notaAlvo: state.config.notaAlvo }); return cardReco(reco, metodo(mSel), ultimo); })()}
       ` : `<div class="card soft"><p>Nenhuma extração registrada. Métodos indicados para este terroir:</p><div class="chips">${sugeridos.map((m) => `<a class="chip" href="#/nova?grao=${g.id}&metodo=${m.id}">${m.icone} ${esc(m.nome)}</a>`).join('')}</div></div>`}
 
       <div class="section-title"><h2>Pontos de partida por método</h2></div>
@@ -956,7 +1020,7 @@
   }
 
   /* ---------------- API para módulos (timer, rótulo, cafeína) ---------------- */
-  const hooks = { home: [], tiles: [], mais: [], ajustes: [], extracaoSalva: [], extracaoExcluida: [], salvo: [], boot: [] };
+  const hooks = { home: [], tiles: [], mais: [], ajustes: [], extracaoSalva: [], extracaoEditada: [], extracaoExcluida: [], salvo: [], boot: [] };
   window.CafeLab = {
     state: () => state, save, carregarDemo, routes, render, go, toast, modal, closeModal, esc, uid, $, $$, fmtData, parseTempo,
     grao, moedor, metodo, extracao, BEAN, hooks, nowLocal

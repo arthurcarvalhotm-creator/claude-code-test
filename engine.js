@@ -22,13 +22,23 @@ window.Engine = (function () {
     return clamp(Math.round(s * 100) / 100, min, max);
   }
 
-  /* Tamanho de um "ajuste padrão" em cliques para este moedor/método */
+  /* Classes de método */
+  const IMERSAO = ['prensa-francesa', 'clever', 'aeropress', 'cold-brew'];
+  const tipoMetodo = (m) => (isEspresso(m) ? 'espresso' : m.id === 'moka' ? 'moka' : IMERSAO.includes(m.id) ? 'imersao' : 'filtro');
+
+  /* Tamanho de um "ajuste padrão" em cliques para este moedor/método.
+   * Com µm por clique conhecido: ~18 µm no espresso, ~30 µm na moka,
+   * ~55 µm em filtrados e ~80 µm em imersão. */
   function passoAjuste(grinder, method) {
-    const min = Number(grinder.min) || 0, max = Number(grinder.max) || 40;
     const passo = Number(grinder.passo) || 1;
-    const span = max - min;
-    let base = isEspresso(method) ? span / 36 : span / 18;
-    if (grinder.passoAjuste) base = Number(grinder.passoAjuste) * (isEspresso(method) ? 0.5 : 1);
+    const tipo = tipoMetodo(method);
+    let base;
+    if (grinder.passoAjuste) base = Number(grinder.passoAjuste) * (tipo === 'espresso' ? 0.5 : tipo === 'imersao' ? 1.4 : 1);
+    else if (grinder.umPorClique) base = ({ espresso: 18, moka: 30, filtro: 55, imersao: 80 })[tipo] / Number(grinder.umPorClique);
+    else {
+      const span = (Number(grinder.max) || 40) - (Number(grinder.min) || 0);
+      base = tipo === 'espresso' ? span / 36 : tipo === 'imersao' ? span / 14 : span / 18;
+    }
     base = Math.max(passo, Math.round(base / passo) * passo);
     return Math.round(base * 100) / 100;
   }
@@ -45,7 +55,7 @@ window.Engine = (function () {
       base = min + (max - min) * ((method.grind - 0.5) / 7);
     }
     // um "passo" de descritor: 1/12 da escala em filtrados; espresso é muito mais sensível (1/30)
-    const stepClicks = (max - min) / (isEspresso(method) ? 30 : 12);
+    const stepClicks = grinder.umPorClique || grinder.passoAjuste ? 2 * passoAjuste(grinder, method) : (max - min) / (isEspresso(method) ? 30 : 12);
     const sinal = grinder.direcao === 'maior=fino' ? -1 : 1; // padrão: menor número = mais fino
     return snap(grinder, base + sinal * off * stepClicks);
   }
@@ -122,14 +132,76 @@ window.Engine = (function () {
     return r1(tds * bebida / Number(brew.dose));
   }
 
+  /* ---------- Perfil sensorial esperado do grão ----------
+   * O que este grão, nesta torra e neste método, deveria entregar na xícara
+   * (escala 1–5). É a referência para ler a avaliação: acidez 4 é ótima num
+   * lavado da Mantiqueira e sinal de sub-extração num natural do Cerrado. */
+  const FAMILIAS = {
+    fruta: ['frutas amarelas', 'frutas vermelhas', 'frutas tropicais', 'frutas secas', 'cítrico', 'laranja', 'limão', 'maçã', 'uva', 'pêssego', 'maracujá', 'manga', 'cereja', 'morango', 'amora', 'jabuticaba', 'cajá', 'caju'],
+    floral: ['floral', 'chá preto', 'ervas', 'jasmim', 'flores'],
+    doce: ['caramelo', 'mel', 'rapadura', 'melado', 'cana', 'baunilha', 'doce de leite', 'açúcar mascavo'],
+    chocolate: ['chocolate', 'cacau', 'nozes', 'castanhas', 'castanha', 'amendoim', 'amêndoa'],
+    fermentado: ['vinho', 'fermentado', 'álcool', 'licor', 'boozy'],
+    tostado: ['tostado', 'defumado', 'amadeirado', 'queimado'],
+    cru: ['cereal', 'vegetal', 'grama', 'palha']
+  };
+  const NOME_FAMILIA = { fruta: 'fruta', floral: 'floral', doce: 'caramelo/mel', chocolate: 'chocolate/nozes' };
+  const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  function familia(nota) {
+    const n = semAcento(nota);
+    for (const f in FAMILIAS) if (FAMILIAS[f].some((x) => n.includes(semAcento(x)))) return f;
+    return null;
+  }
+  const meio = (v) => Math.round(v * 2) / 2;
+  const fmtN = (v) => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
+  const minusc = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+  const juntar = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' e ' + a[a.length - 1]);
+  const AMARGOR_TORRA = { clara: 1.5, 'media-clara': 2, media: 2.5, 'media-escura': 3.5, escura: 4.2 };
+  const ACIDEZ_TORRA = { clara: 0.5, 'media-clara': 0.25, media: 0, 'media-escura': -0.5, escura: -1 };
+  const CORPO_METODO = { espresso: 1.2, moka: 1, 'prensa-francesa': 0.6, 'coador-pano': 0.4, clever: 0.2, aeropress: 0.2, 'cold-brew': 0.3, melitta: 0, kalita: 0, v60: -0.4, chemex: -0.7 };
+  const ATRIBUTOS = [['acidez', 'Acidez'], ['docura', 'Doçura'], ['amargor', 'Amargor'], ['corpo', 'Corpo'], ['final', 'Finalização']];
+
+  function perfilEsperado(bean, method) {
+    const b = bean || {};
+    const reg = DB.regiao[b.regiao] || DB.regiao.outra;
+    const torraId = DB.torra[b.torra] ? b.torra : 'media';
+    const canephora = b.especie === 'canephora' || reg.id === 'conilon-capixaba' || reg.id === 'rondonia';
+    const acB = Number(b.acidez) || reg.acidez || 3, coB = Number(b.corpo) || reg.corpo || 3, doB = Number(b.docura) || reg.docura || 3;
+    const notas = (b.notas && b.notas.length ? b.notas : reg.notas) || [];
+    return {
+      acidez: meio(clamp(acB + (ACIDEZ_TORRA[torraId] || 0) - (canephora ? 0.5 : 0), 1, 5)),
+      docura: meio(clamp(Math.max(3.5, doB), 1, 5)), // doçura: buscar o máximo que o grão entrega
+      amargor: meio(clamp((AMARGOR_TORRA[torraId] || 2.5) + (canephora ? 0.7 : 0), 1, 5)),
+      corpo: meio(clamp(coB + (CORPO_METODO[method.id] || 0), 1, 5)),
+      final: 4,
+      notas, familias: [...new Set(notas.map(familia).filter(Boolean))],
+      torraId, torra: DB.torra[torraId], proc: DB.processo[b.processo] || null, reg, canephora
+    };
+  }
+
+  /* Compara o que você sentiu com o que o grão deveria entregar */
+  function leituraSensorial(brew, method, bean) {
+    const E = perfilEsperado(bean, method);
+    const P = {}, d = {};
+    ATRIBUTOS.forEach(([k]) => { P[k] = Number(brew[k]) || 3; d[k] = r2(P[k] - E[k]); });
+    const perc = brew.descritores || [];
+    const famP = [...new Set(perc.map(familia).filter(Boolean))];
+    const escura = E.torraId === 'media-escura' || E.torraId === 'escura';
+    return {
+      esperado: E, percebido: P, desvio: d, notasPercebidas: perc, familiasPercebidas: famP,
+      notasFaltando: perc.length ? E.familias.filter((f) => ['fruta', 'floral', 'doce', 'chocolate'].includes(f) && !famP.includes(f)) : [],
+      notasIntrusas: famP.filter((f) => ['tostado', 'cru', 'fermentado'].includes(f) && !E.familias.includes(f) && !(f === 'tostado' && escura))
+    };
+  }
+
   /* ---------- Diagnóstico de uma extração ----------
    * indice ∈ [-1, 1]: negativo = sub-extração, positivo = sobre-extração
-   * forca  ∈ [-1, 1]: negativo = fraco/diluído, positivo = forte demais  */
-  function diagnose(brew, method) {
+   * forca  ∈ [-1, 1]: negativo = fraco/diluído, positivo = forte demais
+   * Com o grão, a avaliação é lida em relação ao perfil esperado dele. */
+  function diagnose(brew, method, bean) {
     let sub = 0, sobre = 0, forca = 0, ferm = 0;
     const fatores = [];
-    const flags = brew.sinais || [];
-    flags.forEach(id => {
+    (brew.sinais || []).forEach((id) => {
       const s = DB.sinal[id]; if (!s) return;
       if (s.tipo === 'sub') { sub += s.peso; fatores.push({ t: s.nome, v: -s.peso }); }
       else if (s.tipo === 'sobre') { sobre += s.peso; fatores.push({ t: s.nome, v: +s.peso }); }
@@ -138,30 +210,63 @@ window.Engine = (function () {
       else if (s.tipo === 'processo') { ferm += 1; fatores.push({ t: s.nome, v: 0, processo: true }); }
     });
 
-    // sliders 1–5
-    const ac = Number(brew.acidez) || 3, doc = Number(brew.docura) || 3, am = Number(brew.amargor) || 3;
-    const corpo = Number(brew.corpo) || 3, fim = Number(brew.final) || 3;
-    if (ac >= 4 && doc <= 2) { sub += 0.6; fatores.push({ t: 'Acidez alta com doçura baixa', v: -0.6 }); }
-    if (am >= 4 && doc <= 2) { sobre += 0.6; fatores.push({ t: 'Amargor alto com doçura baixa', v: +0.6 }); }
-    if (am >= 4 && ac <= 2) { sobre += 0.3; fatores.push({ t: 'Amargor domina a acidez', v: +0.3 }); }
-    if (ac >= 4 && am <= 2 && doc <= 3) { sub += 0.3; fatores.push({ t: 'Acidez domina sem doçura', v: -0.3 }); }
-    if (corpo <= 2 && fim <= 2) { sub += 0.3; forca -= 0.3; fatores.push({ t: 'Corpo leve e final curto', v: -0.3, forca: -0.3 }); }
-    if (corpo >= 5 && am >= 4) { sobre += 0.2; forca += 0.3; fatores.push({ t: 'Muito corpo e amargor', v: +0.2, forca: +0.3 }); }
+    const temGrao = bean && (bean.id || bean.regiao || bean.torra);
+    let leitura = null;
+    if (temGrao) {
+      leitura = leituraSensorial(brew, method, bean);
+      const E = leitura.esperado, P = leitura.percebido, d = leitura.desvio;
+      const acExc = Math.max(0, d.acidez), acDef = Math.max(0, -d.acidez), doDef = Math.max(0, -d.docura);
+      const amExc = Math.max(0, d.amargor), fiDef = Math.max(0, -d.final), co = d.corpo;
+      const tor = E.torra.nome.toLowerCase();
+      if (acExc >= 1) {
+        const v = 0.35 * acExc + (doDef >= 1 ? 0.25 * doDef : 0);
+        sub += v; fatores.push({ t: `Acidez ${P.acidez} acima do esperado para este grão (${fmtN(E.acidez)})${doDef >= 1 ? ` e doçura ${P.docura} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: -r2(v) });
+      }
+      if (amExc >= 1) {
+        const v = 0.35 * amExc + (doDef >= 1 && acExc < 1 ? 0.25 * doDef : 0);
+        sobre += v; fatores.push({ t: `Amargor ${P.amargor} acima do esperado para torra ${tor} (${fmtN(E.amargor)})${doDef >= 1 && acExc < 1 ? ` e doçura ${P.docura} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: r2(v) });
+      }
+      if (doDef >= 1 && acExc < 1 && amExc < 1) {
+        if (co <= -1) { forca -= 0.35; fatores.push({ t: `Doçura ${P.docura} e corpo ${P.corpo} abaixo do esperado: xícara diluída`, v: 0, forca: -0.35 }); }
+        else { const v = 0.2 * doDef; sub += v; fatores.push({ t: `Doçura ${P.docura} abaixo do que o grão entrega (${fmtN(E.docura)}), sem acidez nem amargor em excesso`, v: -r2(v) }); }
+      }
+      if (fiDef >= 1.5) {
+        if (amExc >= 1) { sobre += 0.15; fatores.push({ t: `Finalização ${P.final}: final áspero junto com o amargor`, v: 0.15 }); }
+        else if (acExc >= 1 || doDef >= 1) { sub += 0.15; fatores.push({ t: `Finalização ${P.final}: final curto, a doçura não se sustenta`, v: -0.15 }); }
+      }
+      if (acDef >= 1.5 && amExc >= 1) { sobre += 0.2; fatores.push({ t: `Acidez ${P.acidez} apagada pelo amargor (esperado ${fmtN(E.acidez)})`, v: 0.2 }); }
+      if (co <= -1.5 && doDef < 1) { forca -= 0.4; fatores.push({ t: `Corpo ${P.corpo} abaixo do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: -0.4 }); }
+      else if (co >= 1.5) { forca += 0.4; fatores.push({ t: `Corpo ${P.corpo} acima do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: 0.4 }); }
+      leitura.notasIntrusas.forEach((fam) => {
+        if (fam === 'cru') { sub += 0.3; fatores.push({ t: 'Notas de cereal/vegetal: típico de sub-extração', v: -0.3 }); }
+        if (fam === 'tostado') { sobre += 0.3; fatores.push({ t: `Notas tostadas/amadeiradas num café de torra ${tor}: água quente demais ou extração longa`, v: 0.3 }); }
+        if (fam === 'fermentado') { ferm += 0.5; fatores.push({ t: 'Notas de vinho/fermentado fora do perfil do grão', v: 0, processo: true }); }
+      });
+    } else {
+      // sem grão cadastrado: leitura absoluta dos controles 1–5
+      const ac = Number(brew.acidez) || 3, doc = Number(brew.docura) || 3, am = Number(brew.amargor) || 3;
+      const corpo = Number(brew.corpo) || 3, fim = Number(brew.final) || 3;
+      if (ac >= 4 && doc <= 2) { sub += 0.6; fatores.push({ t: 'Acidez alta com doçura baixa', v: -0.6 }); }
+      if (am >= 4 && doc <= 2) { sobre += 0.6; fatores.push({ t: 'Amargor alto com doçura baixa', v: +0.6 }); }
+      if (am >= 4 && ac <= 2) { sobre += 0.3; fatores.push({ t: 'Amargor domina a acidez', v: +0.3 }); }
+      if (ac >= 4 && am <= 2 && doc <= 3) { sub += 0.3; fatores.push({ t: 'Acidez domina sem doçura', v: -0.3 }); }
+      if (corpo <= 2 && fim <= 2) { sub += 0.3; forca -= 0.3; fatores.push({ t: 'Corpo leve e final curto', v: -0.3, forca: -0.3 }); }
+      if (corpo >= 5 && am >= 4) { sobre += 0.2; forca += 0.3; fatores.push({ t: 'Muito corpo e amargor', v: +0.2, forca: +0.3 }); }
+    }
 
     // tempo vs faixa do método
     const t = Number(brew.tempoS);
     if (t && method.tempoS && method.id !== 'cold-brew') {
       const { min, max } = method.tempoS;
-      if (t < min) { const d = clamp((min - t) / (max - min), 0, 1); sub += 0.5 * d; fatores.push({ t: `Tempo ${fmtTempo(t)} abaixo da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: -0.5 * d, tempo: -1 }); }
-      if (t > max) { const d = clamp((t - max) / (max - min), 0, 1); sobre += 0.5 * d; fatores.push({ t: `Tempo ${fmtTempo(t)} acima da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: +0.5 * d, tempo: +1 }); }
+      if (t < min) { const dd = clamp((min - t) / (max - min), 0, 1); sub += 0.5 * dd; fatores.push({ t: `Tempo ${fmtTempo(t)} abaixo da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: -r2(0.5 * dd), tempo: -1 }); }
+      if (t > max) { const dd = clamp((t - max) / (max - min), 0, 1); sobre += 0.5 * dd; fatores.push({ t: `Tempo ${fmtTempo(t)} acima da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: r2(0.5 * dd), tempo: +1 }); }
     }
-
-    // EY
+    // EY / TDS
     const e = ey(brew, method);
     if (e != null) {
       const lo = isEspresso(method) ? 18 : 18.5, hi = isEspresso(method) ? 23 : 22.5;
-      if (e < lo) { const d = clamp((lo - e) / 3, 0, 1); sub += 0.7 * d; fatores.push({ t: `EY ${e} % abaixo de ${lo} %`, v: -0.7 * d }); }
-      if (e > hi) { const d = clamp((e - hi) / 3, 0, 1); sobre += 0.7 * d; fatores.push({ t: `EY ${e} % acima de ${hi} %`, v: +0.7 * d }); }
+      if (e < lo) { const dd = clamp((lo - e) / 3, 0, 1); sub += 0.7 * dd; fatores.push({ t: `EY ${e} % abaixo de ${lo} %`, v: -r2(0.7 * dd) }); }
+      if (e > hi) { const dd = clamp((e - hi) / 3, 0, 1); sobre += 0.7 * dd; fatores.push({ t: `EY ${e} % acima de ${hi} %`, v: r2(0.7 * dd) }); }
     }
     const tds = Number(brew.tds);
     if (tds) {
@@ -178,119 +283,330 @@ window.Engine = (function () {
     else if (indice >= 0.55) { rotulo = 'Sobre-extração clara'; cor = 'sobre'; }
     else if (indice >= 0.2) { rotulo = 'Leve sobre-extração'; cor = 'sobre'; }
     else { rotulo = 'Extração equilibrada'; cor = 'ok'; }
-    if (sub > 0.6 && sobre > 0.6) { rotulo = 'Sub e sobre ao mesmo tempo (canal / moagem irregular)'; cor = 'misto'; }
-    return { indice: r2(indice), forca: r2(forca), ferm, rotulo, cor, fatores, ey: e, misto: sub > 0.6 && sobre > 0.6 };
+    const misto = sub > 0.6 && sobre > 0.6;
+    if (misto) { rotulo = 'Sub e sobre ao mesmo tempo (canal / moagem irregular)'; cor = 'misto'; }
+    return { indice: r2(indice), forca: r2(forca), ferm, rotulo, cor, fatores, ey: e, misto, leitura };
+  }
+
+  /* ---------- Faixas de temperatura por torra ---------- */
+  const FAIXA_TEMP = {
+    filtro: { clara: [92, 97], 'media-clara': [91, 96], media: [89, 95], 'media-escura': [86, 93], escura: [84, 91] },
+    espresso: { clara: [93, 96], 'media-clara': [92, 95], media: [91, 94], 'media-escura': [89, 93], escura: [88, 92] }
+  };
+  function faixaTemp(method, torraId) {
+    const f = FAIXA_TEMP[isEspresso(method) ? 'espresso' : 'filtro'][torraId] || [88, 96];
+    const a = Math.max(f[0], method.tempC.min), b = Math.min(f[1], method.tempC.max);
+    return a <= b ? [a, b] : [method.tempC.min, method.tempC.max];
+  }
+  const PASSO_TEMPO_IMERSAO = { 'prensa-francesa': 45, clever: 30, aeropress: 20, 'cold-brew': 7200 };
+  const NOME_VAR = { moagem: 'moagem', temperatura: 'temperatura', 'razão': 'razão', tempo: 'tempo de imersão' };
+  function fmtVar(v, x) { return v === 'moagem' ? `${fmtClicks(x)} cliques` : v === 'temperatura' ? `${fmtN(x)} °C` : v === 'razão' ? `1:${fmtN(x)}` : fmtTempo(x); }
+
+  /* O que mudou da extração anterior para esta, e o efeito na nota */
+  function aprendizado(brew, prev, method) {
+    if (!prev) return null;
+    const num = (v) => (v == null || v === '' ? null : Number(v));
+    const mud = [];
+    if (num(prev.clicks) != null && num(brew.clicks) != null && num(prev.clicks) !== num(brew.clicks)) mud.push({ v: 'moagem', de: num(prev.clicks), para: num(brew.clicks) });
+    if (method.id !== 'cold-brew' && num(prev.tempC) != null && num(prev.tempC) !== num(brew.tempC)) mud.push({ v: 'temperatura', de: num(prev.tempC), para: num(brew.tempC) });
+    if (num(prev.ratio) != null && Math.abs(num(prev.ratio) - (num(brew.ratio) || 0)) >= 0.05) mud.push({ v: 'razão', de: num(prev.ratio), para: num(brew.ratio) });
+    if (tipoMetodo(method) === 'imersao' && num(prev.tempoS) && num(brew.tempoS) && Math.abs(prev.tempoS - brew.tempoS) >= 10) mud.push({ v: 'tempo', de: num(prev.tempoS), para: num(brew.tempoS) });
+    mud.forEach((m) => { m.sentido = Math.sign(m.para - m.de); });
+    const temNotas = prev.nota != null && prev.nota !== '' && brew.nota != null && brew.nota !== '';
+    return { prev, mud, dn: temNotas ? r1(Number(brew.nota) - Number(prev.nota)) : 0 };
   }
 
   /* ---------- Recomendação para a próxima extração ----------
-   * history: extrações anteriores do mesmo grão × método × moedor, ordem
-   * cronológica, já com .diag calculado; brew: a atual (última). */
-  function recommend(brew, history, method, grinder, bean) {
-    const diag = brew.diag || diagnose(brew, method);
+   * history: extrações anteriores do mesmo grão × método × moedor, em ordem
+   * cronológica; brew: a atual (última). Cada ação traz o "porquê". */
+  function recommend(brew, history, method, grinder, bean, opts) {
+    opts = opts || {};
+    history = history || [];
+    const temGrao = bean && (bean.id || bean.regiao || bean.torra);
+    const diag = diagnose(brew, method, temGrao ? bean : null);
+    const L = diag.leitura;
+    const tipo = tipoMetodo(method);
+    const torraId = temGrao && DB.torra[bean.torra] ? bean.torra : 'media';
+    const torra = DB.torra[torraId];
+    const tor = torra.nome.toLowerCase();
+    const clara = torraId === 'clara' || torraId === 'media-clara';
+    const escura = torraId === 'media-escura' || torraId === 'escura';
+    const alvoNota = Number(opts.notaAlvo) || 8;
     const acoes = [];
-    const prox = {
-      clicks: brew.clicks != null ? Number(brew.clicks) : null,
-      ratio: Number(brew.ratio), tempC: Number(brew.tempC), dose: Number(brew.dose),
-      water: Number(brew.water), tempoS: method.tempoS.padrao
+    const add = (a) => { acoes.push(a); return a; };
+    const temAcao = () => acoes.some((a) => a.tipo === 'principal' || a.tipo === 'secundario');
+    // no máximo 2 mudanças de receita por vez; o resto vira alternativa
+    const ALAVANCAS = ['moagem', 'temperatura', 'razão', 'tempo'];
+    const efetivas = () => acoes.filter((a) => (a.tipo === 'principal' || a.tipo === 'secundario') && ALAVANCAS.includes(a.alvo)).length;
+    const tipoLivre = () => (efetivas() >= 2 ? 'alternativa' : acoes.some((a) => a.tipo === 'principal') ? 'secundario' : 'principal');
+    const original = {
+      clicks: brew.clicks != null && brew.clicks !== '' ? Number(brew.clicks) : null,
+      ratio: Number(brew.ratio), tempC: Number(brew.tempC), dose: Number(brew.dose), water: Number(brew.water),
+      tempoS: tipo === 'imersao' && Number(brew.tempoS) ? Number(brew.tempoS) : method.tempoS.padrao
     };
+    const prox = Object.assign({}, original);
     const step = grinder ? passoAjuste(grinder, method) : 1;
-    const dirFino = grinder && grinder.direcao === 'maior=fino' ? +1 : -1; // sinal em cliques para "mais fino"
+    const dirFino = grinder && grinder.direcao === 'maior=fino' ? +1 : -1;
     const prev = history.length ? history[history.length - 1] : null;
+    if (prev && !prev.diag) prev.diag = diagnose(prev, method, temGrao ? bean : null);
     const score = Number(brew.nota) || 0;
+    const sev = Math.abs(diag.indice);
+    const niveis = sev < 0.4 ? 1 : sev < 0.7 ? 2 : (tipo === 'espresso' ? 2 : 3);
+    const [tMin, tMax] = faixaTemp(method, torraId);
+    const bloqueio = {};
+    const usados = new Set();
+    const t = Number(brew.tempoS) || 0;
     let status = 'ajustando';
-    let confianca = 0.5 + Math.min(0.4, history.length * 0.1);
+    let confianca = 0.45 + Math.min(0.3, history.length * 0.1) + (brew.tds ? 0.1 : 0) + (L ? 0.05 : 0);
+    const sintomas = diag.fatores.filter((f) => f.v).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 2).map((f) => minusc(f.t)).join('; ');
 
-    // 1. Misto: canalização/moagem irregular
-    if (diag.misto) {
-      acoes.push({ alvo: 'técnica', txt: 'Sinais de sub e sobre juntos: provável canalização ou moagem irregular. Mantenha a moagem, melhore a distribuição (WDT/nivelamento), despejo mais suave e verifique finos. Se persistir, moa 1 passo mais grosso.' });
-    }
-
-    // 2. Extração (moagem como alavanca principal)
-    let deltaClicks = 0;
-    if (!diag.misto && Math.abs(diag.indice) >= 0.2 && grinder && prox.clicks != null) {
-      let mag = Math.abs(diag.indice) * 2 * step;         // |indice| 1 → 2 passos
-      mag = Math.max(Number(grinder.passo) || 1, mag);
-      // bissecção / aceleração usando a extração anterior
-      if (prev && prev.diag && prev.clicks != null && Number(prev.clicks) !== prox.clicks) {
-        const flip = Math.sign(prev.diag.indice) !== 0 && Math.sign(prev.diag.indice) !== Math.sign(diag.indice);
-        const moved = Math.abs(Number(prev.clicks) - prox.clicks);
-        if (flip) {
-          // passou do ponto: volte ao meio, ponderado pelos índices
-          const w = Math.abs(diag.indice) / (Math.abs(diag.indice) + Math.abs(prev.diag.indice) || 1);
-          const alvo = prox.clicks + (Number(prev.clicks) - prox.clicks) * w;
-          mag = Math.abs(alvo - prox.clicks);
+    /* ----- alavancas ----- */
+    function moer(fino, passos, tipoA, por, comHistorico) {
+      const efetiva = tipoA !== 'alternativa';
+      if (usados.has('moagem') || (efetiva && bloqueio.moagem != null)) return false;
+      if (!grinder || prox.clicks == null) {
+        add({ alvo: 'moagem', tipo: tipoA, txt: `${fino ? 'Moa mais fino' : 'Moa mais grosso'} (${passos > 1 ? passos + ' ajustes' : '1 ajuste'})`, por: `${por} Cadastre o moedor e os cliques para receber o número exato.` });
+        if (efetiva) usados.add('moagem');
+        return true;
+      }
+      let mag = Math.max(Number(grinder.passo) || 1, passos * step);
+      if (comHistorico && prev && prev.diag && prev.clicks != null && prev.clicks !== '' && Number(prev.clicks) !== prox.clicks) {
+        const pi = prev.diag.indice, moved = Math.abs(Number(prev.clicks) - prox.clicks);
+        if (Math.abs(pi) >= 0.2 && Math.sign(pi) !== Math.sign(diag.indice)) {
+          const w = sev / (sev + Math.abs(pi) || 1);
+          mag = Math.max(Number(grinder.passo) || 1, Math.abs((Number(prev.clicks) - prox.clicks) * w));
           confianca += 0.1;
-          acoes.push({ alvo: 'nota', txt: `A extração anterior estava do lado oposto (${prev.diag.rotulo.toLowerCase()}). O ponto ideal está entre ${fmtClicks(prev.clicks)} e ${fmtClicks(prox.clicks)} cliques: bissecção.` });
-        } else if (Math.sign(prev.diag.indice) === Math.sign(diag.indice) && Math.abs(diag.indice) >= Math.abs(prev.diag.indice) - 0.1) {
-          // mesmo problema com magnitude parecida: acelere
+          add({ alvo: 'nota', tipo: 'info', txt: `O ponto ideal de moagem está entre ${fmtClicks(prev.clicks)} e ${fmtClicks(prox.clicks)} cliques.`, por: `Com ${fmtClicks(prev.clicks)} cliques a xícara ficou do lado oposto (${prev.diag.rotulo.toLowerCase()}); por isso o ajuste agora é menor.` });
+        } else if (Math.sign(pi) === Math.sign(diag.indice) && sev >= Math.abs(pi) - 0.1) {
           mag = Math.max(mag, Math.min(moved * 1.5, step * 4));
-          acoes.push({ alvo: 'nota', txt: 'O ajuste anterior não foi suficiente: passo maior desta vez.' });
+          add({ alvo: 'nota', tipo: 'info', txt: 'O último ajuste de moagem não foi suficiente.', por: `Você já tinha mudado ${fmtClicks(moved)} cliques e o problema continuou; o passo desta vez é maior.` });
         }
       }
-      // sub-extração → mais fino; sobre → mais grosso
-      const sentido = diag.indice < 0 ? dirFino : -dirFino;
-      const novo = snap(grinder, prox.clicks + sentido * mag);
-      deltaClicks = Math.round((novo - prox.clicks) * 100) / 100;
-      if (deltaClicks !== 0) {
-        acoes.push({ alvo: 'moagem', de: prox.clicks, para: novo, delta: deltaClicks,
-          txt: `${diag.indice < 0 ? 'Moa mais fino' : 'Moa mais grosso'}: ${fmtClicks(prox.clicks)} → ${fmtClicks(novo)} cliques (${deltaClicks > 0 ? '+' : ''}${fmtClicks(deltaClicks)}).` });
-        prox.clicks = novo;
+      const novo = snap(grinder, prox.clicks + (fino ? dirFino : -dirFino) * mag);
+      const delta = r2(novo - prox.clicks);
+      if (!delta) return false;
+      add({ alvo: 'moagem', tipo: tipoA, de: prox.clicks, para: novo, delta, txt: `${fino ? 'Moa mais fino' : 'Moa mais grosso'}: ${fmtClicks(prox.clicks)} → ${fmtClicks(novo)} cliques (${delta > 0 ? '+' : ''}${fmtClicks(delta)})`, por });
+      if (efetiva) { prox.clicks = novo; usados.add('moagem'); }
+      return true;
+    }
+    function temperatura(delta, tipoA, por) {
+      const efetiva = tipoA !== 'alternativa';
+      if (method.id === 'cold-brew' || !prox.tempC) return false;
+      if (usados.has('temperatura') || (efetiva && bloqueio.temperatura === Math.sign(delta))) return false;
+      let nova;
+      if (delta > 0) { if (prox.tempC >= tMax) return false; nova = Math.min(prox.tempC + delta, tMax); }
+      else { if (prox.tempC <= tMin) return false; nova = Math.max(prox.tempC + delta, tMin); }
+      nova = Math.round(nova * 2) / 2;
+      if (nova === prox.tempC) return false;
+      add({ alvo: 'temperatura', tipo: tipoA, de: prox.tempC, para: nova, delta: r1(nova - prox.tempC), txt: `Temperatura: ${fmtN(prox.tempC)} → ${fmtN(nova)} °C`, por });
+      if (efetiva) { prox.tempC = nova; usados.add('temperatura'); }
+      return true;
+    }
+    function razao(delta, tipoA, por) {
+      const efetiva = tipoA !== 'alternativa';
+      if (!prox.ratio) return false;
+      if (usados.has('razão') || (efetiva && bloqueio['razão'] === Math.sign(delta))) return false;
+      const nova = clamp(r2(prox.ratio + delta), method.ratio.min, method.ratio.max);
+      if (nova === prox.ratio) return false;
+      const vol = isEspresso(method) ? `bebida ${fmtN(r1(prox.dose * nova))} g` : `água ${Math.round(prox.dose * nova)} g`;
+      add({ alvo: 'razão', tipo: tipoA, de: prox.ratio, para: nova, delta: r2(nova - prox.ratio), txt: `Razão: 1:${fmtN(prox.ratio)} → 1:${fmtN(nova)} (${vol} para ${fmtN(prox.dose)} g de café)`, por });
+      if (efetiva) { prox.ratio = nova; usados.add('razão'); }
+      return true;
+    }
+    function tempoImersao(deltaS, tipoA, por) {
+      const efetiva = tipoA !== 'alternativa';
+      if (usados.has('tempo') || (efetiva && bloqueio.tempo === Math.sign(deltaS))) return false;
+      const base = prox.tempoS || method.tempoS.padrao, gr = method.id === 'cold-brew' ? 1800 : 5;
+      const novo = Math.round(clamp(base + deltaS, method.tempoS.min, method.tempoS.max * 1.25) / gr) * gr;
+      if (novo === base) return false;
+      add({ alvo: 'tempo', tipo: tipoA, de: base, para: novo, txt: `Tempo de imersão: ${fmtTempo(base)} → ${fmtTempo(novo)}`, por });
+      if (efetiva) { prox.tempoS = novo; usados.add('tempo'); }
+      return true;
+    }
+    const tecnica = (txt, por, tipoA) => add({ alvo: 'técnica', tipo: tipoA || 'info', txt, por });
+    function maisExtracaoSuave(tipoA, por) {
+      if (tipo === 'imersao') return tempoImersao(PASSO_TEMPO_IMERSAO[method.id] || 30, tipoA, por) || moer(true, 1, tipoA, por);
+      if (tipo === 'filtro' && !escura) return temperatura(1, tipoA, por) || moer(true, 1, tipoA, por);
+      return moer(true, 1, tipoA, por);
+    }
+
+    /* ----- 1. aprendizado com a extração anterior ----- */
+    const hl = aprendizado(brew, prev, method);
+    if (hl && hl.mud.length && Math.abs(hl.dn) >= 1) {
+      const nP = fmtN(Number(hl.prev.nota)), nB = fmtN(score);
+      if (hl.mud.length === 1) {
+        const m1 = hl.mud[0];
+        const cruzou = m1.v === 'moagem' && hl.prev.diag && Math.abs(hl.prev.diag.indice) >= 0.2 && sev >= 0.2 && Math.sign(hl.prev.diag.indice) !== Math.sign(diag.indice);
+        const efeito = m1.v === 'moagem' ? (m1.sentido === dirFino ? 1 : -1) : m1.sentido; // +1 = extrai mais
+        const precisa = diag.indice <= -0.2 ? 1 : diag.indice >= 0.2 ? -1 : 0;
+        if (hl.dn < 0 && !cruzou && precisa !== 0 && -efeito !== precisa) {
+          add({ alvo: 'nota', tipo: 'info', txt: `A nota caiu de ${nP} para ${nB}, mas mudar a ${NOME_VAR[m1.v]} para ${fmtVar(m1.v, m1.para)} ia na direção certa.`, por: 'A queda deve ter outra causa; siga o ajuste abaixo.' });
+        } else if (hl.dn < 0 && !cruzou) {
+          bloqueio[m1.v] = m1.sentido;
+          add({ alvo: m1.v, tipo: precisa !== 0 ? 'secundario' : 'principal', de: m1.para, para: m1.de, txt: `Volte a ${NOME_VAR[m1.v]} para ${fmtVar(m1.v, m1.de)}`, por: `Com ${fmtVar(m1.v, m1.de)} a nota foi ${nP}; ao mudar para ${fmtVar(m1.v, m1.para)} caiu para ${nB}. Essa direção não funcionou para este grão.` });
+          if (m1.v === 'moagem') prox.clicks = m1.de; else if (m1.v === 'temperatura') prox.tempC = m1.de; else if (m1.v === 'razão') prox.ratio = m1.de; else prox.tempoS = m1.de;
+          usados.add(m1.v);
+          confianca += 0.1;
+        } else if (hl.dn > 0) {
+          add({ alvo: 'nota', tipo: 'info', txt: `Mudar a ${NOME_VAR[m1.v]} (${fmtVar(m1.v, m1.de)} → ${fmtVar(m1.v, m1.para)}) subiu a nota de ${nP} para ${nB}.`, por: 'Se a xícara ainda pedir, continue na mesma direção.' });
+          confianca += 0.05;
+        }
       } else {
-        acoes.push({ alvo: 'temperatura', txt: `Moedor no limite da escala: use a temperatura (${diag.indice < 0 ? '+1,5 °C' : '−1,5 °C'}).` });
-        prox.tempC = clamp(prox.tempC + (diag.indice < 0 ? 1.5 : -1.5), method.tempC.min, method.tempC.max);
-      }
-    } else if (!diag.misto && Math.abs(diag.indice) >= 0.2 && (!grinder || prox.clicks == null)) {
-      acoes.push({ alvo: 'moagem', txt: `${diag.indice < 0 ? 'Moa mais fino' : 'Moa mais grosso'} (cadastre o moedor e os cliques para receber o número exato).` });
-    }
-
-    // 3. Temperatura como alavanca secundária (quando o ajuste é leve e a moagem já foi mexida)
-    if (!diag.misto && Math.abs(diag.indice) >= 0.2 && Math.abs(diag.indice) < 0.5 && prev && prev.clicks != null && Number(prev.clicks) !== Number(brew.clicks) && method.id !== 'cold-brew') {
-      const dT = diag.indice < 0 ? 1 : -1;
-      const novaT = clamp(prox.tempC + dT, method.tempC.min, method.tempC.max);
-      if (novaT !== prox.tempC) {
-        acoes.push({ alvo: 'temperatura', de: prox.tempC, para: novaT, txt: `Ajuste fino: temperatura ${prox.tempC} → ${novaT} °C.` });
-        prox.tempC = novaT;
+        add({ alvo: 'nota', tipo: 'info', txt: `Você mudou ${hl.mud.map((m) => NOME_VAR[m.v]).join(', ')} ao mesmo tempo e a nota ${hl.dn > 0 ? 'subiu' : 'caiu'} ${fmtN(Math.abs(hl.dn))} ponto(s).`, por: 'Mudando uma variável por vez fica claro o que funciona para este grão.' });
       }
     }
 
-    // 4. Processo / fermentado
+    /* ----- 2. eixo de extração ----- */
+    if (diag.misto) {
+      tecnica('Melhore a distribuição do pó antes de mexer na receita', 'Sinais de sub e sobre ao mesmo tempo indicam canalização ou moagem irregular: nivele o leito, faça um bloom que molhe todo o pó e despeje mais baixo e suave.', 'principal');
+      moer(false, 1, 'alternativa', 'Se o problema se repetir com boa distribuição, moa um pouco mais grosso para reduzir finos.');
+    } else if (diag.indice <= -0.2) {
+      const por = `A xícara pediu mais extração: ${sintomas}.`;
+      if (tipo === 'filtro') {
+        const ok = moer(true, niveis, tipoLivre(), por, true);
+        if (clara) temperatura(ok ? Math.min(niveis, 2) : Math.max(1, niveis), tipoLivre(), `Torra ${tor} é mais densa e só solta os açúcares com mais energia${ok ? ': junto com a moagem, água mais quente completa o ajuste' : ''}.`);
+        else if (!escura && (niveis >= 2 || !ok)) temperatura(1, tipoLivre(), `Numa torra ${tor}, 1 °C a mais completa o ajuste sem puxar amargor.`);
+        else if (escura) tecnica('Alongue o bloom para 45–60 s e faça um despejo a mais', `Em torra ${tor}, subir a temperatura puxa amargor; prefira mais tempo de contato.`, ok ? 'info' : 'principal');
+        if (t && t < method.tempoS.min) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} abaixo da faixa do método (${fmtTempo(method.tempoS.min)}–${fmtTempo(method.tempoS.max)}).`, por: 'A água passou rápido demais pelo pó; a moagem mais fina deve trazer o tempo para a faixa.' });
+      } else if (tipo === 'imersao') {
+        const passoT = PASSO_TEMPO_IMERSAO[method.id] || 30;
+        let ok = false;
+        if (!t || t < method.tempoS.max) ok = tempoImersao(passoT * niveis, tipoLivre(), `${por} Na imersão, o tempo de contato é a alavanca mais direta.`);
+        if (!ok || niveis >= 2) moer(true, 1, tipoLivre(), ok ? 'Mais superfície de contato completa o ajuste.' : `${por} O tempo já está no limite do método; moa mais fino.`);
+        if (clara) temperatura(1, tipoLivre(), `Torra ${tor} extrai melhor com água mais quente.`);
+      } else if (tipo === 'espresso') {
+        if (t && t >= method.tempoS.max) razao(0.2 * niveis, tipoLivre(), `O shot já correu ${t} s e ainda ficou com ${sintomas}. Moer mais fino pode travar a máquina; deixe correr mais bebida para extrair mais.`);
+        else moer(true, niveis, tipoLivre(), `${por} Moer mais fino aumenta o tempo de contato (alvo ${method.tempoS.min}–${method.tempoS.max} s).`, true);
+        if (clara) temperatura(1, tipoLivre(), `Torra ${tor} pede água mais quente no espresso.`);
+      } else {
+        moer(true, 1, tipoLivre(), por, true);
+        tecnica('Coloque água já quente na base e use fogo médio, sem compactar o pó', 'Água fria na base aquece o pó antes de extrair e deixa a bebida ácida e rala.');
+      }
+    } else if (diag.indice >= 0.2) {
+      const por = `A xícara passou do ponto: ${sintomas}.`;
+      if (tipo === 'filtro') {
+        const ok = moer(false, niveis, tipoLivre(), por, true);
+        if (escura) temperatura(-Math.min(3, niveis + 1), tipoLivre(), `Torra ${tor} já é muito solúvel: água mais fria segura o amargor.`);
+        else if (!clara && (niveis >= 2 || !ok)) temperatura(-1, tipoLivre(), `Numa torra ${tor}, 1 °C a menos ajuda a segurar o amargor.`);
+        else if (clara && prox.tempC > 95) temperatura(-1, tipoLivre(), `${fmtN(prox.tempC)} °C é quente até para torra ${tor}.`);
+        if (niveis >= 2 || (t && t > method.tempoS.max)) tecnica('Despeje mais baixo e suave, com menos pulsos e sem swirl no final', 'Agitação extra também puxa amargor e leva finos para o fundo, travando a drenagem.');
+        if (t && t > method.tempoS.max) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} acima da faixa do método (${fmtTempo(method.tempoS.min)}–${fmtTempo(method.tempoS.max)}).`, por: 'A moagem mais grossa deve trazer a drenagem para a faixa.' });
+      } else if (tipo === 'imersao') {
+        const passoT = PASSO_TEMPO_IMERSAO[method.id] || 30;
+        let ok = false;
+        if (!t || t > method.tempoS.min) ok = tempoImersao(-passoT * niveis, tipoLivre(), `${por} Menos tempo de contato é a correção mais direta na imersão.`);
+        if (!ok || niveis >= 2) moer(false, 1, tipoLivre(), ok ? 'Moagem mais grossa reduz finos e adstringência.' : `${por} O tempo já está no mínimo do método; moa mais grosso.`);
+        if (escura) temperatura(-2, tipoLivre(), `Torra ${tor} extrai rápido; água mais fria segura o amargor.`);
+        if (method.id === 'prensa-francesa') tecnica('Retire a espuma, pressione só até a superfície e sirva logo', 'O café continua extraindo enquanto fica na prensa.');
+      } else if (tipo === 'espresso') {
+        if (t && t <= method.tempoS.min) razao(-0.2 * niveis, tipoLivre(), `O shot foi rápido (${t} s) e mesmo assim ficou com ${sintomas}: corte a bebida mais cedo.`);
+        else moer(false, niveis, tipoLivre(), `${por} Moer mais grosso encurta o tempo de contato (alvo ${method.tempoS.min}–${method.tempoS.max} s).`, true);
+        if (escura) temperatura(-1, tipoLivre(), `Torra ${tor} pede água um pouco mais fria no espresso.`);
+      } else {
+        moer(false, 1, tipoLivre(), por, true);
+        tecnica('Tire do fogo assim que o café começar a clarear e resfrie a base', 'O final da extração da moka é o que mais traz amargor.');
+      }
+    }
+
+    /* ----- 3. notas de fermentação ----- */
     if (diag.ferm) {
-      const novaT = clamp(prox.tempC - 2, method.tempC.min, method.tempC.max);
-      acoes.push({ alvo: 'temperatura', de: prox.tempC, para: novaT, txt: `Nota fermentada é do lote, não da moagem: baixe a temperatura (${prox.tempC} → ${novaT} °C) e alongue a razão.` });
-      prox.tempC = novaT;
-      if (!isPressao(method)) prox.ratio = clamp(prox.ratio + 0.5, method.ratio.min, method.ratio.max);
+      const proc = L && L.esperado.proc ? L.esperado.proc.nome.split(' (')[0].toLowerCase() : 'do lote';
+      temperatura(-2, tipoLivre(), `As notas de fermentado/álcool vêm do processo (${proc}), não da moagem: água mais fria deixa a xícara mais limpa.`);
+      if (!isPressao(method)) razao(tipo === 'espresso' ? 0.2 : 0.5, tipoLivre(), 'Um pouco mais de água dilui a intensidade fermentada.');
     }
 
-    // 5. Força → razão (só quando o sinal é explícito ou a extração já está quase no ponto:
-    //    uma variável por vez evita mascarar o efeito da moagem)
-    const forcaExplicita = (brew.sinais || []).some((s) => s === 'fraco' || s === 'forte');
-    if (Math.abs(diag.forca) >= 0.3 && (forcaExplicita || Math.abs(diag.indice) < 0.5)) {
-      const passoRatio = isEspresso(method) ? 0.2 : (method.id === 'moka' ? 0.5 : 1);
-      const dr = diag.forca < 0 ? -passoRatio : +passoRatio; // fraco → menos água
-      const nova = clamp(r2(prox.ratio + dr), method.ratio.min, method.ratio.max);
-      if (nova !== prox.ratio) {
-        acoes.push({ alvo: 'razão', de: prox.ratio, para: nova, txt: `${diag.forca < 0 ? 'Fraco' : 'Intenso demais'}: razão 1:${prox.ratio} → 1:${nova} (mesma dose de ${prox.dose} g${isEspresso(method) ? `, bebida ${r1(prox.dose * nova)} g` : `, água ${Math.round(prox.dose * nova)} g`}).` });
-        prox.ratio = nova;
+    /* ----- 4. força (corpo) → razão ----- */
+    if (Math.abs(diag.forca) >= 0.3) {
+      const explicita = (brew.sinais || []).some((s) => s === 'fraco' || s === 'forte');
+      const tipoA = explicita || sev < 0.5 ? tipoLivre() : 'alternativa';
+      const fraco = diag.forca < 0;
+      const corpoTxt = L ? `Corpo ${L.percebido.corpo} ${fraco ? 'abaixo' : 'acima'} do esperado (${fmtN(L.esperado.corpo)}) para este grão no método ${method.nome.split(' (')[0]}` : (fraco ? 'Xícara fraca/diluída' : 'Xícara intensa demais');
+      if (tipo === 'moka') tecnica(fraco ? 'Encha o funil até a borda, nivelado e sem compactar' : 'Dilua na xícara com um pouco de água quente', `${corpoTxt}. Na moka a razão é fixada pelo funil.`);
+      else {
+        const forte = Math.abs(diag.forca) >= 0.6;
+        const d = tipo === 'espresso' ? (forte ? 0.3 : 0.2) : method.id === 'cold-brew' ? 1 : (forte ? 1 : 0.5);
+        razao(fraco ? -d : d, tipoA, `${corpoTxt}. ${fraco ? 'Menos água por grama de café encorpa a xícara' : 'Mais água por grama de café deixa a xícara mais leve'} sem mudar a extração.${tipoA === 'alternativa' ? ' Faça isso depois de corrigir a extração.' : ''}`);
       }
     }
 
-    // 6. Tempo alvo / espresso: tempo é o termômetro
-    if (isEspresso(method)) {
-      const t = Number(brew.tempoS);
-      if (t && (t < method.tempoS.min || t > method.tempoS.max) && Math.abs(diag.indice) < 0.2) {
-        acoes.push({ alvo: 'nota', txt: `Tempo ${t} s fora da faixa (${method.tempoS.min}–${method.tempoS.max} s), mas a xícara está boa: priorize o sabor. Se quiser padronizar, ${t < method.tempoS.min ? 'feche' : 'abra'} ${fmtClicks(step)} clique(s) e reavalie.` });
+    /* ----- 5. ajuste de perfil (extração no ponto, sabor ainda longe do grão) ----- */
+    if (!diag.misto && sev < 0.2 && L) {
+      const E = L.esperado, P = L.percebido, d = L.desvio;
+      const perfilGrao = `${E.reg.id !== 'outra' ? E.reg.nome : 'este grão'}${E.proc ? ' ' + E.proc.nome.split(' (')[0].toLowerCase() : ''} de torra ${tor}`;
+      const doDef = -d.docura, acExc = d.acidez, acDef = -d.acidez, amExc = d.amargor;
+      const brilhante = E.acidez >= 3.5 || E.familias.includes('fruta') || E.familias.includes('floral');
+      const faltaFruta = L.notasFaltando.some((f) => f === 'fruta' || f === 'floral');
+      const cands = [];
+      if (doDef >= 1 && acExc < 1 && amExc < 1) cands.push({ peso: doDef, f: (tA) => maisExtracaoSuave(tA, `Doçura ${P.docura} abaixo do que ${perfilGrao} costuma entregar (${fmtN(E.docura)}), sem acidez nem amargor sobrando: dá para extrair mais açúcares antes do amargor aparecer.`) });
+      if (acExc >= 1 && doDef < 1) cands.push({ peso: acExc * 0.9, f: (tA) => razao(tipo === 'espresso' ? -0.2 : -0.5, tA, `Acidez ${P.acidez} mais viva que o perfil de ${perfilGrao} (${fmtN(E.acidez)}), com boa doçura: um pouco mais de corpo arredonda a acidez.`) });
+      if (brilhante && amExc < 1 && (acDef >= 1.5 || (acDef >= 1 && faltaFruta))) cands.push({ peso: acDef, f: (tA) => {
+        const ok = razao(tipo === 'espresso' ? 0.3 : 0.5, tA, `Acidez ${P.acidez} abaixo do potencial de ${perfilGrao} (${fmtN(E.acidez)}${E.notas.length ? '; notas esperadas: ' + E.notas.slice(0, 3).join(', ') : ''}): uma xícara um pouco mais diluída e limpa abre a acidez e a fruta.`);
+        if (ok && tipo === 'filtro') moer(false, 1, 'alternativa', 'Outra forma de ganhar clareza: moagem 1 ajuste mais grossa com 1 °C a mais mantém a extração e reduz o corpo que mascara a acidez.');
+        return ok;
+      } });
+      if (L.notasFaltando.some((f) => f === 'doce' || f === 'chocolate') && L.familiasPercebidas.includes('fruta') && acExc >= 0.5) {
+        const esperadas = E.notas.filter((n) => ['doce', 'chocolate'].includes(familia(n))).slice(0, 2).join(' e ') || 'caramelo/chocolate';
+        cands.push({ peso: 1, f: (tA) => maisExtracaoSuave(tA, `Você sentiu fruta ácida, mas não o ${esperadas} esperado deste grão: esses sabores saem mais tarde na extração.`) });
+      }
+      if (Math.abs(d.corpo) >= 1 && Math.abs(diag.forca) < 0.3) cands.push({ peso: Math.abs(d.corpo) * 0.8, f: (tA) => razao((d.corpo < 0 ? -1 : 1) * (tipo === 'espresso' ? 0.2 : 0.5), tA, `Corpo ${P.corpo} ${d.corpo < 0 ? 'abaixo' : 'acima'} do esperado (${fmtN(E.corpo)}) para este grão no método ${method.nome.split(' (')[0]}.`) });
+      cands.sort((a, b) => b.peso - a.peso);
+      let n = 0;
+      for (const c of cands) { if (n >= 2) break; if (c.f(tipoLivre())) n++; }
+    }
+
+    /* ----- 6. sem nada a corrigir ----- */
+    if (!temAcao() && !diag.misto) {
+      if (score >= alvoNota) {
+        status = 'calibrado';
+        acoes.unshift({ alvo: 'ok', tipo: 'principal', txt: `Receita calibrada: repita ${fmtReceita(prox, method)}`, por: L ? `Nota ${fmtN(score)} e xícara dentro do perfil esperado deste grão.` : `Nota ${fmtN(score)} e extração equilibrada.` });
+      } else if (score > 0 && L) {
+        const E = L.esperado;
+        const brilhante = E.acidez >= 3.5 || E.familias.includes('fruta') || E.familias.includes('floral');
+        const por0 = `A xícara bate com o perfil esperado, mas a nota ficou em ${fmtN(score)}.`;
+        if (brilhante) razao(tipo === 'espresso' ? 0.2 : 0.5, 'principal', `${por0} Num grão de perfil vivo${E.notas.length ? ' (' + E.notas.slice(0, 3).join(', ') + ')' : ''}, vale testar uma xícara mais limpa, que realça acidez e fruta. Mude só isso e compare.`);
+        else razao(tipo === 'espresso' ? -0.2 : -0.5, 'principal', `${por0} Num grão de perfil doce/achocolatado${E.notas.length ? ' (' + E.notas.slice(0, 3).join(', ') + ')' : ''}, vale testar mais corpo e doçura. Mude só isso e compare.`);
+        if (!temAcao()) acoes.unshift({ alvo: 'ok', tipo: 'principal', txt: 'Repita a receita e avalie com calma', por: `${por0} Registre acidez, doçura, amargor e as notas que sentir para o próximo ajuste ser mais preciso.` });
+      } else if (score > 0) {
+        acoes.unshift({ alvo: 'ok', tipo: 'principal', txt: 'Repita a receita e avalie com calma', por: 'Cadastre o grão com região, processo e torra para o app comparar a xícara com o perfil esperado.' });
+      } else {
+        acoes.unshift({ alvo: 'ok', tipo: 'principal', txt: 'Extração equilibrada: repita a receita e dê uma nota', por: 'Com a nota o app confirma a calibração.' });
       }
     }
 
-    // 7. Status
-    if (!diag.misto && Math.abs(diag.indice) < 0.2 && Math.abs(diag.forca) < 0.3 && !diag.ferm) {
-      if (score >= 8) { status = 'calibrado'; acoes.unshift({ alvo: 'ok', txt: `Receita calibrada (nota ${score}). Repita: ${fmtReceita(prox, method)}. Registre variações de ±1 °C apenas se quiser explorar.` }); }
-      else if (score > 0) { acoes.unshift({ alvo: 'ok', txt: `Extração equilibrada mas nota ${score}. Provável limite do grão/torra: experimente ±1 °C ou razão ±0,5 para explorar doçura, sem mexer na moagem.` }); }
-      else acoes.unshift({ alvo: 'ok', txt: 'Extração equilibrada. Repita a receita e dê uma nota para consolidar a calibração.' });
+    /* ----- 7. você gostou: respeita a nota ----- */
+    if (status !== 'calibrado' && score >= alvoNota && sev < 0.4 && !diag.misto && !diag.ferm) {
+      acoes.forEach((a) => { if (a.tipo === 'principal' || a.tipo === 'secundario') a.tipo = 'alternativa'; });
+      Object.assign(prox, original);
+      status = 'calibrado';
+      acoes.unshift({ alvo: 'ok', tipo: 'principal', txt: `Receita calibrada: repita ${fmtReceita(prox, method)}`, por: `Nota ${fmtN(score)}: você gostou. As sugestões abaixo são só para explorar, uma de cada vez.` });
     }
 
+    /* ----- 8. contexto: descanso do grão e tempo do espresso ----- */
+    if (temGrao && bean.dataTorra) {
+      const dias = Math.floor((Date.now() - new Date(bean.dataTorra).getTime()) / 86400000);
+      const faixa = torra.descansoDias[isPressao(method) ? 'espresso' : 'filtrado'];
+      if (dias >= 0 && dias < faixa[0]) add({ alvo: 'nota', tipo: 'info', txt: `Grão com ${dias} dia(s) de torra, ainda liberando gás.`, por: `O ideal nesta torra é ${faixa[0]}–${faixa[1]} dias. Até lá a xícara varia de um dia para o outro; bloom mais longo ajuda.` });
+      else if (dias > faixa[1] * 2) add({ alvo: 'nota', tipo: 'info', txt: `Grão com ${dias} dias de torra: aromas já em queda.`, por: 'Se a xícara estiver sem vida mesmo equilibrada, é o grão; moer um pouco mais fino e 1 °C a mais compensam.' });
+    }
+    if (tipo === 'espresso' && t && (t < method.tempoS.min || t > method.tempoS.max) && sev < 0.2) {
+      add({ alvo: 'nota', tipo: 'info', txt: `Tempo ${t} s fora da faixa (${method.tempoS.min}–${method.tempoS.max} s), mas a xícara está boa.`, por: `Priorize o sabor. Para padronizar, ${t < method.tempoS.min ? 'feche' : 'abra'} ${fmtClicks(step)} clique(s) e reavalie.` });
+    }
+
+    // leitura resumida da xícara
+    let leitura = '';
+    if (L) {
+      const partes = ATRIBUTOS.filter(([k]) => Math.abs(L.desvio[k]) >= 1).map(([k, nome]) => `${nome} ${L.percebido[k]} (${k === 'docura' ? 'alvo' : 'esperado'} ${fmtN(L.esperado[k])})`);
+      leitura = partes.length ? `${partes.join(' · ')}: ${diag.rotulo.toLowerCase()}.` : `Xícara dentro do perfil esperado para este grão: ${diag.rotulo.toLowerCase()}.`;
+      if (L.notasFaltando.length) leitura += ` Faltaram notas de ${juntar(L.notasFaltando.map((f) => NOME_FAMILIA[f]))}.`;
+    }
+
+    const ordem = { principal: 0, secundario: 1, info: 2, alternativa: 3 };
+    acoes.forEach((a, i) => { a.tipo = a.tipo || 'info'; a._i = i; });
+    acoes.sort((a, b) => (ordem[a.tipo] - ordem[b.tipo]) || (a._i - b._i));
+    acoes.forEach((a) => { delete a._i; });
     prox.water = isEspresso(method) ? r1(prox.dose * prox.ratio) : Math.round(prox.dose * prox.ratio);
-    return { diag, acoes, prox, status, confianca: r2(clamp(confianca, 0, 0.95)), deltaClicks };
+    const deltaClicks = prox.clicks != null && original.clicks != null ? r2(prox.clicks - original.clicks) : 0;
+    return { diag, acoes, prox, status, confianca: r2(clamp(confianca, 0, 0.95)), deltaClicks, leitura, esperado: L ? L.esperado : null };
   }
 
   /* ---------- Receita de despejos escalada para dose × água ---------- */
@@ -331,10 +647,10 @@ window.Engine = (function () {
   function fmtReceita(p, method) {
     const parts = [];
     if (p.clicks != null) parts.push(`${fmtClicks(p.clicks)} cliques`);
-    parts.push(`${p.dose} g → ${isEspresso(method) ? p.water + ' g de bebida' : p.water + ' g de água'} (1:${p.ratio})`);
-    if (method.id !== 'cold-brew') parts.push(`${p.tempC} °C`);
+    parts.push(`${fmtN(p.dose)} g → ${isEspresso(method) ? fmtN(p.water) + ' g de bebida' : p.water + ' g de água'} (1:${fmtN(p.ratio)})`);
+    if (method.id !== 'cold-brew') parts.push(`${fmtN(p.tempC)} °C`);
     return parts.join(' · ');
   }
 
-  return { startingPoint, diagnose, recommend, calibration, ey, receita, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, isEspresso, isPressao };
+  return { startingPoint, diagnose, recommend, calibration, ey, receita, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, fmtN, isEspresso, isPressao, tipoMetodo, perfilEsperado, leituraSensorial, familia, ATRIBUTOS };
 })();

@@ -390,3 +390,17 @@ svg.chart .cf-cross { stroke: var(--text-2); stroke-width: 1; }
 .m-shake-leve { animation: m-shake .35s linear infinite; }
 .av-corpo .range-row { grid-template-columns: auto 1fr 30px; gap: 8px; }
 .pe-item { opacity: .55; }
+
+/* ---------- Recomendação com o porquê ---------- */
+.leitura { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: .88rem; margin: 6px 0 4px; }
+.acao .acao-txt { font-weight: 600; }
+.acao.t-info .acao-txt { font-weight: 400; }
+.acao.t-alternativa { opacity: .85; }
+.acao.t-alternativa .acao-txt { font-weight: 500; }
+.acao-por { font-size: .82rem; color: var(--text-2); margin-top: 2px; }
+.acao-tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-right: 2px; vertical-align: 1px; }
+table.perfil td, table.perfil th { text-align: center; padding: 5px 6px; }
+table.perfil td:first-child, table.perfil th:first-child { text-align: left; }
+table.perfil td.desvio { color: var(--sobre); font-weight: 700; }
+table.perfil td.ok { color: var(--ok); }
+.link-editar { font-size: .82rem; text-decoration: none; margin-left: 4px; }

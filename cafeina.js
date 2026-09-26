@@ -240,6 +240,16 @@
     if (mg > 0) lista().push({ id: lab.uid(), t: x.data, mg: Math.round(mg), nome: `${g ? g.nome : 'Café'} · ${m.nome}`, fonte: 'extracao', extracaoId: x.id });
   });
   lab.hooks.extracaoExcluida.push((x) => { const s = lab.state(); s.cafeina = lista().filter((c) => c.extracaoId !== x.id); });
+  // edição de uma extração: atualiza a cafeína ligada a ela (dose, quanto bebeu, horário)
+  lab.hooks.extracaoEditada.push((x, g, m) => {
+    const s = lab.state(), frac = x.bebido != null ? +x.bebido : 1;
+    const mg = Math.round(estimarExtracao(g, m, x.dose) * frac);
+    const item = lista().find((c) => c.extracaoId === x.id);
+    if (!frac || mg <= 0) { if (item) s.cafeina = lista().filter((c) => c !== item); return; }
+    const dados = { t: x.data, mg, nome: `${g ? g.nome : 'Café'} · ${m.nome}` };
+    if (item) Object.assign(item, dados);
+    else lista().push(Object.assign({ id: lab.uid(), fonte: 'extracao', extracaoId: x.id }, dados));
+  });
 
   window.CafeCafeina = { estimarExtracao, resumo, parametros, quantidade, adicionar, RAPIDOS };
 })();

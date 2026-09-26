@@ -65,11 +65,14 @@ Em **Mais → Backup e ajustes → Carregar exemplo** você vê o motor funciona
 
 ## Como o motor decide
 
-1. **Índice de extração** (−1 sub … +1 sobre) soma sinais ponderados (azedo, salgado, aguado, vegetal = sub; amargo, adstringente, queimado, lamacento = sobre), combinações dos sliders (acidez alta + doçura baixa, amargor alto + doçura baixa…), desvio do tempo em relação à faixa do método e EY fora de 18–22,5 %.
-2. **Moagem** é a alavanca principal: o tamanho do passo depende da escala do moedor (menor para espresso). Se a extração anterior estava do lado oposto, o motor faz **bissecção** entre os dois cliques; se o problema persistiu com a mesma intensidade, aumenta o passo.
-3. **Temperatura** entra como ajuste fino (±1 °C) quando o desvio é leve e a moagem já foi mexida; **razão** só muda quando a intensidade está errada com sabor equilibrado (uma variável por vez).
-4. **Fermentado/álcool** é tratado como característica do lote: baixa temperatura e alonga razão, sem mexer na moagem.
-5. Uma receita vira **calibrada** quando o índice fica dentro de ±0,2 e a nota atinge o alvo (padrão 8, configurável).
+1. **Perfil esperado do grão.** Para cada grão, o app calcula o que ele deveria entregar na xícara (acidez, doçura, amargor, corpo e finalização, de 1 a 5). O cálculo usa a região, o processo, a torra, as notas cadastradas e o método: uma torra clara tem amargor esperado baixo, filtros de papel reduzem o corpo, espresso aumenta. Os controles de paladar do registro começam nesse perfil, então só conta como desvio o que você mover.
+2. **Leitura da avaliação.** O diagnóstico compara o que você sentiu com esse perfil. Acidez 4 é ótima num lavado da Mantiqueira e sinal de sub-extração num natural do Cerrado. Acidez acima do esperado com pouca doçura aponta sub-extração; amargor acima do esperado para a torra aponta sobre-extração; corpo fora do esperado aponta força (razão). Notas de cereal/vegetal, tostado numa torra clara ou fermentado fora do perfil também entram. Somam-se os sinais marcados, o tempo em relação à faixa do método e o EY quando há TDS.
+3. **Alavancas por método e torra.** Em filtrados, a moagem é a alavanca principal; a temperatura entra conforme a torra (torras claras aceitam mais calor, escuras pedem menos). Em imersão, o tempo de contato vem primeiro. No espresso, moagem para o tempo e razão (volume da bebida) quando o tempo já está no limite. O tamanho de cada ajuste acompanha o tamanho do desvio e usa os µm por clique do moedor.
+4. **Ajuste de perfil.** Com a extração no ponto, o app ainda compara o sabor com o grão: doçura abaixo do potencial pede um pouco mais de extração; acidez mais viva que o perfil pede mais corpo; acidez apagada num grão frutado pede uma xícara mais limpa (razão maior).
+5. **Histórico.** O app compara a extração com a anterior: se uma única mudança piorou a nota e pode ter causado o problema, sugere voltar; se melhorou, sugere seguir; se você mudou várias coisas ao mesmo tempo, avisa. A moagem usa bissecção quando a xícara passa de um lado para o outro.
+6. **Uma coisa de cada vez.** No máximo duas mudanças por recomendação; o resto aparece como alternativa. Cada ação vem com o porquê. Nota igual ou acima do alvo (padrão 8) com extração no ponto marca a receita como calibrada.
+
+Registros de extração podem ser editados depois de salvos (botão **Editar registro** na extração): o diagnóstico, a recomendação e a cafeína ligada são recalculados.
 
 Todos os valores da biblioteca são referências de bancada, não regras absolutas; o histórico real sempre prevalece.
 

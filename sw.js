@@ -2,7 +2,7 @@
  * Estratégia: REDE PRIMEIRO para os arquivos do app (sempre pega a versão
  * publicada quando há internet) e CACHE como reserva para funcionar offline.
  * Troque VERSAO a cada publicação para forçar a atualização nos aparelhos. */
-const VERSAO = '2026-09-25.3';
+const VERSAO = '2026-09-26.1';
 const CACHE = 'cafelab-' + VERSAO;
 const ASSETS = ['./', './index.html', './styles.css', './data.js', './engine.js', './mascote.js', './app.js', './timer.js', './rotulo.js', './cafeina.js', './latte.js', './sync.js', './vendor/anthropic-sdk.mjs', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
