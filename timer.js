@@ -37,7 +37,8 @@
     const m = cfg.metodo, esp = E.isEspresso(m);
     const et = cfg.etapas.slice().sort((a, b) => a.t - b.t);
     const fluxo = m.fluxo || 6;
-    const alvoFinal = Math.max(et[et.length - 1].t + 15, m.tempoS.padrao);
+    const TS = E.faixaTempo(m, cfg.dose);
+    const alvoFinal = Math.max(et[et.length - 1].t + 15, TS.padrao);
     let prev = 0;
     return et.map((e, i) => {
       const inicio = e.t;
@@ -53,7 +54,7 @@
 
   function open(cfg, onDone) {
     const lab = L();
-    const m = cfg.metodo;
+    const m = cfg.metodo, TS = E.faixaTempo(m, cfg.dose);
     const fases = montarFases(cfg);
     const total = Math.max(cfg.water || 0, ...fases.map((f) => f.ate));
     const esp = E.isEspresso(m);
@@ -158,7 +159,7 @@
         const passo = `Etapa ${i + 1}/${fases.length}`;
         let instr;
         if (despejando) instr = `<strong>${passo} · ${f.de ? `Despeje ${f.despejo} g até ${f.ate} g` : `Despeje até ${f.ate} g`}</strong><br>${lab.esc(f.desc)}`;
-        else if (finalDren) instr = `<strong>${passo} · Deixe drenar</strong><br>Alvo: terminar entre ${fmtT(m.tempoS.min)} e ${fmtT(m.tempoS.max)}. Toque em <em>Drenou</em> quando o leito secar.`;
+        else if (finalDren) instr = `<strong>${passo} · Deixe drenar</strong><br>Alvo: terminar entre ${fmtT(TS.min)} e ${fmtT(TS.max)}. Toque em <em>Drenou</em> quando o leito secar.`;
         else if (f.final) instr = `<strong>${passo} · ${lab.esc(f.desc) || 'Finalize'}</strong><br>Toque em <em>Concluir</em> ao terminar.`;
         else instr = `<strong>${passo} · ${f.despejo ? 'Aguarde' : lab.esc(f.desc)}</strong><br>${f.despejo ? `Próximo ataque em ${mmss(rest)}${fases[i + 1] && fases[i + 1].despejo ? ` · +${fases[i + 1].despejo} g` : ''}` : 'Próxima ação em ' + mmss(rest)}`;
         $('#tInstr').innerHTML = instr;

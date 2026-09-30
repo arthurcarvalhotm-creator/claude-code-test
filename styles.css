@@ -7,6 +7,7 @@
   --sub-soft: #e3edf9; --sobre-soft: #fbe8dc; --ok-soft: #e1f2e7; --misto-soft: #eee4f7;
   --radius: 14px; --shadow: 0 1px 2px rgba(40, 25, 10, .06), 0 4px 16px rgba(40, 25, 10, .06);
   --nav-h: 64px;
+  --ico-acc: #c8742c;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,6 +18,7 @@
     --teal: #5fc2b4; --sub: #7fb0ea; --sobre: #f0925a; --ok: #6fc290; --misto: #b995dc; --danger: #ff7b72;
     --sub-soft: #1d2b3d; --sobre-soft: #3d2416; --ok-soft: #17301f; --misto-soft: #2c2138;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.35);
+    --ico-acc: #e3a262;
     color-scheme: dark;
   }
 }
@@ -27,6 +29,7 @@
   --teal: #5fc2b4; --sub: #7fb0ea; --sobre: #f0925a; --ok: #6fc290; --misto: #b995dc; --danger: #ff7b72;
   --sub-soft: #1d2b3d; --sobre-soft: #3d2416; --ok-soft: #17301f; --misto-soft: #2c2138;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.35);
+  --ico-acc: #e3a262;
   color-scheme: dark;
 }
 
@@ -358,7 +361,7 @@ svg.chart .cf-cross { stroke: var(--text-2); stroke-width: 1; }
 .latte-res-top canvas { width: 140px; height: 140px; flex: 0 0 auto; }
 /* ---------- Início: ações rápidas ---------- */
 .qa-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-@media (min-width: 720px) { .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 720px) { .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .qa-tile { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-decoration: none; color: var(--text); box-shadow: var(--shadow); min-width: 0; }
 .qa-tile:active { transform: scale(.98); }
 .qa-tile.destaque { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
@@ -477,3 +480,50 @@ select { text-overflow: ellipsis; }
 
 /* elementos escondidos continuam escondidos mesmo com estilo de botão */
 [hidden] { display: none !important; }
+
+/* ---------- Métodos: ícones de traço, grade de escolha, equipamentos ---------- */
+.m-ico { width: 1.3em; height: 1.3em; vertical-align: -.3em; flex: 0 0 auto; }
+.m-ico .acc { stroke: var(--ico-acc); }
+.m-ico .acc.fill { fill: var(--ico-acc); }
+.qa-ico .m-ico { width: 28px; height: 28px; vertical-align: 0; }
+.qa-tile.destaque .m-ico { color: var(--accent-ink); }
+.item .ico.m .m-ico, .item .ico .m-ico { width: 26px; height: 26px; vertical-align: 0; }
+.tab .m-ico { width: 1.15em; height: 1.15em; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; margin: 0 0 12px; }
+.seg-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border-radius: 999px; text-decoration: none; color: var(--text-2); font-weight: 600; font-size: .9rem; min-width: 0; white-space: nowrap; }
+.seg-btn .m-ico, .seg-btn .bean-ico { width: 20px; height: 20px; vertical-align: 0; color: currentColor; }
+.seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.seg-btn .bean-ico { color: var(--accent); }
+.mt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
+@media (min-width: 560px) { .mt-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .mt-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.mt-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: var(--text); min-width: 0; text-align: center; }
+.mt-card { width: 100%; aspect-ratio: 1 / 1; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); transition: transform .12s ease, border-color .12s ease; }
+.mt-card .m-ico { width: 56%; height: 56%; vertical-align: 0; }
+.mt-card.add { background: transparent; box-shadow: none; border-style: dashed; }
+.mt-card.add .m-ico { color: var(--muted); }
+.mt-tile:hover .mt-card { border-color: var(--accent); }
+.mt-tile:active .mt-card { transform: scale(.96); }
+.mt-nome { font-weight: 600; font-size: .9rem; line-height: 1.2; overflow-wrap: anywhere; }
+.mt-sub { font-size: .74rem; color: var(--ok); margin-top: -4px; }
+.mt-head { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px 14px; align-items: center; }
+.mt-head > .mt-card { width: 76px; }
+.mt-head > .kv { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 560px) { .mt-head > .kv { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.rec-cafe { text-decoration: none; color: inherit; align-items: flex-start; }
+.motivos { list-style: none; margin: 6px 0 4px; padding: 0; font-size: .82rem; color: var(--text-2); }
+.motivos li { position: relative; padding-left: 16px; margin: 1px 0; }
+.motivos li::before { position: absolute; left: 0; top: 0; font-weight: 700; }
+.motivos li.pos::before { content: '+'; color: var(--ok); }
+.motivos li.neg::before { content: '!'; color: var(--sobre); left: 3px; }
+.ico-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }
+.ico-pick label { cursor: pointer; }
+.ico-pick input { position: absolute; opacity: 0; pointer-events: none; font-size: 16px; }
+.ico-pick span { display: grid; place-items: center; aspect-ratio: 1 / 1; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.ico-pick span .m-ico { width: 70%; height: 70%; vertical-align: 0; }
+.ico-pick input:checked + span { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); background: var(--accent-soft); }
+.ico-pick input:focus-visible + span { outline: 2px solid var(--accent); }
+.check { display: flex; gap: 8px; align-items: center; font-size: .92rem; cursor: pointer; }
+.check input { width: 20px; height: 20px; flex: 0 0 auto; }
+.sheet-head h2 .m-ico { width: 30px; height: 30px; }
+@media (max-width: 359px) { .mt-grid { gap: 12px 8px; } .mt-nome { font-size: .82rem; } .seg-btn { font-size: .82rem; gap: 4px; padding: 8px 6px; } }

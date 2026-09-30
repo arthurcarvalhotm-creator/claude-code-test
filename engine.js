@@ -10,8 +10,10 @@ window.Engine = (function () {
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const r1 = (v) => Math.round(v * 10) / 10;
   const r2 = (v) => Math.round(v * 100) / 100;
-  const isPressao = (m) => m.id === 'espresso' || m.id === 'moka';
-  const isEspresso = (m) => m.id === 'espresso';
+  /* Métodos personalizados (e a B75) herdam o comportamento de um método base */
+  const baseId = (m) => (m && (m.base || m.id)) || '';
+  const isPressao = (m) => baseId(m) === 'espresso' || baseId(m) === 'moka';
+  const isEspresso = (m) => baseId(m) === 'espresso';
 
   /* Arredonda para o passo do moedor (ex.: 0,5 ou 0,33) */
   function snap(grinder, clicks) {
@@ -24,7 +26,20 @@ window.Engine = (function () {
 
   /* Classes de método */
   const IMERSAO = ['prensa-francesa', 'clever', 'aeropress', 'cold-brew'];
-  const tipoMetodo = (m) => (isEspresso(m) ? 'espresso' : m.id === 'moka' ? 'moka' : IMERSAO.includes(m.id) ? 'imersao' : 'filtro');
+  const tipoMetodo = (m) => (isEspresso(m) ? 'espresso' : baseId(m) === 'moka' ? 'moka' : IMERSAO.includes(baseId(m)) ? 'imersao' : 'filtro');
+
+  /* Faixa de tempo para a dose usada. Nos filtrados (percolação) a água leva
+   * mais tempo para atravessar um leito maior: a faixa do método vale para a
+   * dose padrão (10 g) e escala com (dose / padrão)^0,4. Imersão, espresso e
+   * moka não mudam com a dose. */
+  function faixaTempo(method, dose) {
+    const T = method.tempoS;
+    const d = Number(dose), ref = Number(method.dosePadrao) || 10;
+    if (tipoMetodo(method) !== 'filtro' || !d || d === ref) return { min: T.min, max: T.max, padrao: T.padrao };
+    const f = clamp(Math.pow(d / ref, 0.4), 0.5, 1.8);
+    const r5 = (v) => Math.round((v * f) / 5) * 5;
+    return { min: r5(T.min), max: r5(T.max), padrao: r5(T.padrao) };
+  }
 
   /* Tamanho de um "ajuste padrão" em cliques para este moedor/método.
    * Com µm por clique conhecido: ~18 µm no espresso, ~30 µm na moka,
@@ -49,7 +64,8 @@ window.Engine = (function () {
     const min = Number(grinder.min) || 0, max = Number(grinder.max) || 40;
     const refs = grinder.refs || {};
     let base;
-    if (refs[method.id] != null && refs[method.id] !== '') base = Number(refs[method.id]);
+    const ref = refs[method.id] != null && refs[method.id] !== '' ? refs[method.id] : method.base && refs[method.base] != null && refs[method.base] !== '' ? refs[method.base] : null;
+    if (ref != null) base = Number(ref);
     else {
       // interpola pela escala 1–7
       base = min + (max - min) * ((method.grind - 0.5) / 7);
@@ -77,7 +93,7 @@ window.Engine = (function () {
       if (acidez >= 4) { ratio += 0.2; por.push('Acidez alta: razão de espresso mais longa para abrir doçura.'); }
       if (corpo >= 4 && acidez <= 2) { ratio -= 0.1; por.push('Perfil encorpado: razão levemente mais curta preserva textura.'); }
       if (canephora) { ratio -= 0.15; por.push('Canephora: razão curta (1:1,8–1:2).'); }
-    } else if (method.id === 'moka' || method.id === 'cold-brew') {
+    } else if (baseId(method) === 'moka' || baseId(method) === 'cold-brew') {
       ratio = method.ratio.padrao;
     } else {
       const offsetTorra = torra.base.ratioFiltro - 16; // referência V60 1:16
@@ -91,10 +107,10 @@ window.Engine = (function () {
 
     // temperatura
     let tempC;
-    if (method.id === 'cold-brew') tempC = method.tempC.padrao;
+    if (baseId(method) === 'cold-brew') tempC = method.tempC.padrao;
     else if (isEspresso(method)) tempC = torra.base.espressoTempC + proc.ajuste.tempC * 0.5;
     else tempC = torra.base.filtroTempC + proc.ajuste.tempC + (method.tempC.padrao - 93);
-    if (acidez >= 4 && !isPressao(method) && method.id !== 'cold-brew') tempC += 0.5;
+    if (acidez >= 4 && !isPressao(method) && baseId(method) !== 'cold-brew') tempC += 0.5;
     if (canephora) tempC -= 2;
     tempC = clamp(Math.round(tempC * 2) / 2, method.tempC.min, method.tempC.max);
     por.push(`Torra ${torra.nome.toLowerCase()}: base de ${isEspresso(method) ? torra.base.espressoTempC : torra.base.filtroTempC} °C${proc.ajuste.tempC ? ` (${proc.ajuste.tempC > 0 ? '+' : ''}${proc.ajuste.tempC} °C pelo processo)` : ''}.`);
@@ -102,13 +118,16 @@ window.Engine = (function () {
     // moagem
     let moagemOff = torra.base.moagem + proc.ajuste.moagem;
     if (canephora) moagemOff += 0.5;
-    if (corpo >= 4 && (method.id === 'v60' || method.id === 'prensa-francesa')) { moagemOff += 0.25; }
+    if (corpo >= 4 && (baseId(method) === 'v60' || baseId(method) === 'prensa-francesa')) { moagemOff += 0.25; }
     const clicks = grinder ? clicksForMethod(grinder, method, moagemOff) : null;
     if (moagemOff !== 0) por.push(`Moagem ${moagemOff > 0 ? 'mais grossa' : 'mais fina'} que o padrão do método (${r2(Math.abs(moagemOff))} passo).`);
 
     // dose / água
-    const dose = bean.dosePadrao || method.dosePadrao;
+    // dose de partida: 10 g (espresso 18 g); a dose do grão, se definida, vale fora do espresso
+    const dose = (!isEspresso(method) && Number(bean.dosePadrao)) || method.dosePadrao;
     const water = isEspresso(method) ? r1(dose * ratio) : Math.round(dose * ratio);
+    const TS = faixaTempo(method, dose);
+    if (tipoMetodo(method) === 'filtro' && dose <= 12) por.push(`Dose de ${fmtN(dose)} g: leito baixo drena mais rápido; a faixa de tempo (${fmtTempo(TS.min)}–${fmtTempo(TS.max)}) já considera essa dose.`);
 
     // descanso
     let descanso = null;
@@ -120,7 +139,7 @@ window.Engine = (function () {
       else if (dias > faixa[1] * 2) por.push(`Grão com ${dias} dias de torra: já passou do pico (${faixa[0]}–${faixa[1]} dias). Moa um pouco mais fino e use +1 °C.`);
     }
 
-    return { ratio: r2(ratio), tempC, clicks, dose, water, tempoS: method.tempoS.padrao, moagemOff, por, descanso, torra, proc, reg };
+    return { ratio: r2(ratio), tempC, clicks, dose, water, tempoS: TS.padrao, faixaTempo: TS, moagemOff, por, descanso, torra, proc, reg };
   }
 
   /* ---------- Rendimento de extração (EY) ---------- */
@@ -172,7 +191,7 @@ window.Engine = (function () {
       acidez: meio(clamp(acB + (ACIDEZ_TORRA[torraId] || 0) - (canephora ? 0.5 : 0), 1, 5)),
       docura: meio(clamp(Math.max(3.5, doB), 1, 5)), // doçura: buscar o máximo que o grão entrega
       amargor: meio(clamp((AMARGOR_TORRA[torraId] || 2.5) + (canephora ? 0.7 : 0), 1, 5)),
-      corpo: meio(clamp(coB + (CORPO_METODO[method.id] || 0), 1, 5)),
+      corpo: meio(clamp(coB + (CORPO_METODO[baseId(method)] || 0), 1, 5)),
       final: 4,
       notas, familias: [...new Set(notas.map(familia).filter(Boolean))],
       torraId, torra: DB.torra[torraId], proc: DB.processo[b.processo] || null, reg, canephora
@@ -256,8 +275,8 @@ window.Engine = (function () {
 
     // tempo vs faixa do método
     const t = Number(brew.tempoS);
-    if (t && method.tempoS && method.id !== 'cold-brew') {
-      const { min, max } = method.tempoS;
+    if (t && method.tempoS && baseId(method) !== 'cold-brew') {
+      const { min, max } = faixaTempo(method, brew.dose);
       if (t < min) { const dd = clamp((min - t) / (max - min), 0, 1); sub += 0.5 * dd; fatores.push({ t: `Tempo ${fmtTempo(t)} abaixo da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: -r2(0.5 * dd), tempo: -1 }); }
       if (t > max) { const dd = clamp((t - max) / (max - min), 0, 1); sobre += 0.5 * dd; fatores.push({ t: `Tempo ${fmtTempo(t)} acima da faixa (${fmtTempo(min)}–${fmtTempo(max)})`, v: r2(0.5 * dd), tempo: +1 }); }
     }
@@ -308,7 +327,7 @@ window.Engine = (function () {
     const num = (v) => (v == null || v === '' ? null : Number(v));
     const mud = [];
     if (num(prev.clicks) != null && num(brew.clicks) != null && num(prev.clicks) !== num(brew.clicks)) mud.push({ v: 'moagem', de: num(prev.clicks), para: num(brew.clicks) });
-    if (method.id !== 'cold-brew' && num(prev.tempC) != null && num(prev.tempC) !== num(brew.tempC)) mud.push({ v: 'temperatura', de: num(prev.tempC), para: num(brew.tempC) });
+    if (baseId(method) !== 'cold-brew' && num(prev.tempC) != null && num(prev.tempC) !== num(brew.tempC)) mud.push({ v: 'temperatura', de: num(prev.tempC), para: num(brew.tempC) });
     if (num(prev.ratio) != null && Math.abs(num(prev.ratio) - (num(brew.ratio) || 0)) >= 0.05) mud.push({ v: 'razão', de: num(prev.ratio), para: num(brew.ratio) });
     if (tipoMetodo(method) === 'imersao' && num(prev.tempoS) && num(brew.tempoS) && Math.abs(prev.tempoS - brew.tempoS) >= 10) mud.push({ v: 'tempo', de: num(prev.tempoS), para: num(brew.tempoS) });
     mud.forEach((m) => { m.sentido = Math.sign(m.para - m.de); });
@@ -322,6 +341,7 @@ window.Engine = (function () {
   function recommend(brew, history, method, grinder, bean, opts) {
     opts = opts || {};
     history = history || [];
+    const TS = faixaTempo(method, brew.dose);
     const temGrao = bean && (bean.id || bean.regiao || bean.torra);
     const diag = diagnose(brew, method, temGrao ? bean : null);
     const L = diag.leitura;
@@ -342,7 +362,7 @@ window.Engine = (function () {
     const original = {
       clicks: brew.clicks != null && brew.clicks !== '' ? Number(brew.clicks) : null,
       ratio: Number(brew.ratio), tempC: Number(brew.tempC), dose: Number(brew.dose), water: Number(brew.water),
-      tempoS: tipo === 'imersao' && Number(brew.tempoS) ? Number(brew.tempoS) : method.tempoS.padrao
+      tempoS: tipo === 'imersao' && Number(brew.tempoS) ? Number(brew.tempoS) : TS.padrao
     };
     const prox = Object.assign({}, original);
     const step = grinder ? passoAjuste(grinder, method) : 1;
@@ -391,7 +411,7 @@ window.Engine = (function () {
     }
     function temperatura(delta, tipoA, por) {
       const efetiva = tipoA !== 'alternativa';
-      if (method.id === 'cold-brew' || !prox.tempC) return false;
+      if (baseId(method) === 'cold-brew' || !prox.tempC) return false;
       if (usados.has('temperatura') || (efetiva && bloqueio.temperatura === Math.sign(delta))) return false;
       let nova;
       if (delta > 0) { if (prox.tempC >= tMax) return false; nova = Math.min(prox.tempC + delta, tMax); }
@@ -416,8 +436,8 @@ window.Engine = (function () {
     function tempoImersao(deltaS, tipoA, por) {
       const efetiva = tipoA !== 'alternativa';
       if (usados.has('tempo') || (efetiva && bloqueio.tempo === Math.sign(deltaS))) return false;
-      const base = prox.tempoS || method.tempoS.padrao, gr = method.id === 'cold-brew' ? 1800 : 5;
-      const novo = Math.round(clamp(base + deltaS, method.tempoS.min, method.tempoS.max * 1.25) / gr) * gr;
+      const base = prox.tempoS || TS.padrao, gr = baseId(method) === 'cold-brew' ? 1800 : 5;
+      const novo = Math.round(clamp(base + deltaS, TS.min, TS.max * 1.25) / gr) * gr;
       if (novo === base) return false;
       add({ alvo: 'tempo', tipo: tipoA, de: base, para: novo, txt: `Tempo de imersão: ${fmtTempo(base)} → ${fmtTempo(novo)}`, por });
       if (efetiva) { prox.tempoS = novo; usados.add('tempo'); }
@@ -425,7 +445,7 @@ window.Engine = (function () {
     }
     const tecnica = (txt, por, tipoA) => add({ alvo: 'técnica', tipo: tipoA || 'info', txt, por });
     function maisExtracaoSuave(tipoA, por) {
-      if (tipo === 'imersao') return tempoImersao(PASSO_TEMPO_IMERSAO[method.id] || 30, tipoA, por) || moer(true, 1, tipoA, por);
+      if (tipo === 'imersao') return tempoImersao(PASSO_TEMPO_IMERSAO[baseId(method)] || 30, tipoA, por) || moer(true, 1, tipoA, por);
       if (tipo === 'filtro' && !escura) return temperatura(1, tipoA, por) || moer(true, 1, tipoA, por);
       return moer(true, 1, tipoA, por);
     }
@@ -467,16 +487,16 @@ window.Engine = (function () {
         if (clara) temperatura(ok ? Math.min(niveis, 2) : Math.max(1, niveis), tipoLivre(), `Torra ${tor} é mais densa e só solta os açúcares com mais energia${ok ? ': junto com a moagem, água mais quente completa o ajuste' : ''}.`);
         else if (!escura && (niveis >= 2 || !ok)) temperatura(1, tipoLivre(), `Numa torra ${tor}, 1 °C a mais completa o ajuste sem puxar amargor.`);
         else if (escura) tecnica('Alongue o bloom para 45–60 s e faça um despejo a mais', `Em torra ${tor}, subir a temperatura puxa amargor; prefira mais tempo de contato.`, ok ? 'info' : 'principal');
-        if (t && t < method.tempoS.min) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} abaixo da faixa do método (${fmtTempo(method.tempoS.min)}–${fmtTempo(method.tempoS.max)}).`, por: 'A água passou rápido demais pelo pó; a moagem mais fina deve trazer o tempo para a faixa.' });
+        if (t && t < TS.min) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} abaixo da faixa do método (${fmtTempo(TS.min)}–${fmtTempo(TS.max)}).`, por: 'A água passou rápido demais pelo pó; a moagem mais fina deve trazer o tempo para a faixa.' });
       } else if (tipo === 'imersao') {
-        const passoT = PASSO_TEMPO_IMERSAO[method.id] || 30;
+        const passoT = PASSO_TEMPO_IMERSAO[baseId(method)] || 30;
         let ok = false;
-        if (!t || t < method.tempoS.max) ok = tempoImersao(passoT * niveis, tipoLivre(), `${por} Na imersão, o tempo de contato é a alavanca mais direta.`);
+        if (!t || t < TS.max) ok = tempoImersao(passoT * niveis, tipoLivre(), `${por} Na imersão, o tempo de contato é a alavanca mais direta.`);
         if (!ok || niveis >= 2) moer(true, 1, tipoLivre(), ok ? 'Mais superfície de contato completa o ajuste.' : `${por} O tempo já está no limite do método; moa mais fino.`);
         if (clara) temperatura(1, tipoLivre(), `Torra ${tor} extrai melhor com água mais quente.`);
       } else if (tipo === 'espresso') {
-        if (t && t >= method.tempoS.max) razao(0.2 * niveis, tipoLivre(), `O shot já correu ${t} s e ainda ficou com ${sintomas}. Moer mais fino pode travar a máquina; deixe correr mais bebida para extrair mais.`);
-        else moer(true, niveis, tipoLivre(), `${por} Moer mais fino aumenta o tempo de contato (alvo ${method.tempoS.min}–${method.tempoS.max} s).`, true);
+        if (t && t >= TS.max) razao(0.2 * niveis, tipoLivre(), `O shot já correu ${t} s e ainda ficou com ${sintomas}. Moer mais fino pode travar a máquina; deixe correr mais bebida para extrair mais.`);
+        else moer(true, niveis, tipoLivre(), `${por} Moer mais fino aumenta o tempo de contato (alvo ${TS.min}–${TS.max} s).`, true);
         if (clara) temperatura(1, tipoLivre(), `Torra ${tor} pede água mais quente no espresso.`);
       } else {
         moer(true, 1, tipoLivre(), por, true);
@@ -489,18 +509,18 @@ window.Engine = (function () {
         if (escura) temperatura(-Math.min(3, niveis + 1), tipoLivre(), `Torra ${tor} já é muito solúvel: água mais fria segura o amargor.`);
         else if (!clara && (niveis >= 2 || !ok)) temperatura(-1, tipoLivre(), `Numa torra ${tor}, 1 °C a menos ajuda a segurar o amargor.`);
         else if (clara && prox.tempC > 95) temperatura(-1, tipoLivre(), `${fmtN(prox.tempC)} °C é quente até para torra ${tor}.`);
-        if (niveis >= 2 || (t && t > method.tempoS.max)) tecnica('Despeje mais baixo e suave, com menos pulsos e sem swirl no final', 'Agitação extra também puxa amargor e leva finos para o fundo, travando a drenagem.');
-        if (t && t > method.tempoS.max) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} acima da faixa do método (${fmtTempo(method.tempoS.min)}–${fmtTempo(method.tempoS.max)}).`, por: 'A moagem mais grossa deve trazer a drenagem para a faixa.' });
+        if (niveis >= 2 || (t && t > TS.max)) tecnica('Despeje mais baixo e suave, com menos pulsos e sem swirl no final', 'Agitação extra também puxa amargor e leva finos para o fundo, travando a drenagem.');
+        if (t && t > TS.max) add({ alvo: 'nota', tipo: 'info', txt: `Tempo total ${fmtTempo(t)} acima da faixa do método (${fmtTempo(TS.min)}–${fmtTempo(TS.max)}).`, por: 'A moagem mais grossa deve trazer a drenagem para a faixa.' });
       } else if (tipo === 'imersao') {
-        const passoT = PASSO_TEMPO_IMERSAO[method.id] || 30;
+        const passoT = PASSO_TEMPO_IMERSAO[baseId(method)] || 30;
         let ok = false;
-        if (!t || t > method.tempoS.min) ok = tempoImersao(-passoT * niveis, tipoLivre(), `${por} Menos tempo de contato é a correção mais direta na imersão.`);
+        if (!t || t > TS.min) ok = tempoImersao(-passoT * niveis, tipoLivre(), `${por} Menos tempo de contato é a correção mais direta na imersão.`);
         if (!ok || niveis >= 2) moer(false, 1, tipoLivre(), ok ? 'Moagem mais grossa reduz finos e adstringência.' : `${por} O tempo já está no mínimo do método; moa mais grosso.`);
         if (escura) temperatura(-2, tipoLivre(), `Torra ${tor} extrai rápido; água mais fria segura o amargor.`);
-        if (method.id === 'prensa-francesa') tecnica('Retire a espuma, pressione só até a superfície e sirva logo', 'O café continua extraindo enquanto fica na prensa.');
+        if (baseId(method) === 'prensa-francesa') tecnica('Retire a espuma, pressione só até a superfície e sirva logo', 'O café continua extraindo enquanto fica na prensa.');
       } else if (tipo === 'espresso') {
-        if (t && t <= method.tempoS.min) razao(-0.2 * niveis, tipoLivre(), `O shot foi rápido (${t} s) e mesmo assim ficou com ${sintomas}: corte a bebida mais cedo.`);
-        else moer(false, niveis, tipoLivre(), `${por} Moer mais grosso encurta o tempo de contato (alvo ${method.tempoS.min}–${method.tempoS.max} s).`, true);
+        if (t && t <= TS.min) razao(-0.2 * niveis, tipoLivre(), `O shot foi rápido (${t} s) e mesmo assim ficou com ${sintomas}: corte a bebida mais cedo.`);
+        else moer(false, niveis, tipoLivre(), `${por} Moer mais grosso encurta o tempo de contato (alvo ${TS.min}–${TS.max} s).`, true);
         if (escura) temperatura(-1, tipoLivre(), `Torra ${tor} pede água um pouco mais fria no espresso.`);
       } else {
         moer(false, 1, tipoLivre(), por, true);
@@ -524,7 +544,7 @@ window.Engine = (function () {
       if (tipo === 'moka') tecnica(fraco ? 'Encha o funil até a borda, nivelado e sem compactar' : 'Dilua na xícara com um pouco de água quente', `${corpoTxt}. Na moka a razão é fixada pelo funil.`);
       else {
         const forte = Math.abs(diag.forca) >= 0.6;
-        const d = tipo === 'espresso' ? (forte ? 0.3 : 0.2) : method.id === 'cold-brew' ? 1 : (forte ? 1 : 0.5);
+        const d = tipo === 'espresso' ? (forte ? 0.3 : 0.2) : baseId(method) === 'cold-brew' ? 1 : (forte ? 1 : 0.5);
         razao(fraco ? -d : d, tipoA, `${corpoTxt}. ${fraco ? 'Menos água por grama de café encorpa a xícara' : 'Mais água por grama de café deixa a xícara mais leve'} sem mudar a extração.${tipoA === 'alternativa' ? ' Faça isso depois de corrigir a extração.' : ''}`);
       }
     }
@@ -588,8 +608,8 @@ window.Engine = (function () {
       if (dias >= 0 && dias < faixa[0]) add({ alvo: 'nota', tipo: 'info', txt: `Grão com ${dias} dia(s) de torra, ainda liberando gás.`, por: `O ideal nesta torra é ${faixa[0]}–${faixa[1]} dias. Até lá a xícara varia de um dia para o outro; bloom mais longo ajuda.` });
       else if (dias > faixa[1] * 2) add({ alvo: 'nota', tipo: 'info', txt: `Grão com ${dias} dias de torra: aromas já em queda.`, por: 'Se a xícara estiver sem vida mesmo equilibrada, é o grão; moer um pouco mais fino e 1 °C a mais compensam.' });
     }
-    if (tipo === 'espresso' && t && (t < method.tempoS.min || t > method.tempoS.max) && sev < 0.2) {
-      add({ alvo: 'nota', tipo: 'info', txt: `Tempo ${t} s fora da faixa (${method.tempoS.min}–${method.tempoS.max} s), mas a xícara está boa.`, por: `Priorize o sabor. Para padronizar, ${t < method.tempoS.min ? 'feche' : 'abra'} ${fmtClicks(step)} clique(s) e reavalie.` });
+    if (tipo === 'espresso' && t && (t < TS.min || t > TS.max) && sev < 0.2) {
+      add({ alvo: 'nota', tipo: 'info', txt: `Tempo ${t} s fora da faixa (${TS.min}–${TS.max} s), mas a xícara está boa.`, por: `Priorize o sabor. Para padronizar, ${t < TS.min ? 'feche' : 'abra'} ${fmtClicks(step)} clique(s) e reavalie.` });
     }
 
     // leitura resumida da xícara
@@ -610,16 +630,25 @@ window.Engine = (function () {
   }
 
   /* ---------- Receita de despejos escalada para dose × água ---------- */
+  /* Tempos das etapas valem para a dose padrão (10 g); nos filtrados escalam
+   * junto com a faixa de tempo. A etapa final de drenagem recebe o alvo. */
   function receita(method, dose, water) {
-    const r = DB.receitas[method.id];
-    if (!r) return null;
-    const total = Number(water) || Math.round((Number(dose) || method.dosePadrao) * method.ratio.padrao);
+    const r = DB.receitas[method.id] || (method.base && DB.receitas[method.base]);
+    if (!r || !r.etapas || !r.etapas.length) return null;
+    const d = Number(dose) || method.dosePadrao;
+    const total = Number(water) || Math.round(d * method.ratio.padrao);
+    const filtro = tipoMetodo(method) === 'filtro';
+    const ref = Number(method.dosePadrao) || 10;
+    const f = filtro && d !== ref ? clamp(Math.pow(d / ref, 0.4), 0.5, 1.8) : 1;
+    const TS = faixaTempo(method, d);
     let prev = 0;
-    const etapas = r.etapas.map((e, i) => {
+    const etapas = r.etapas.map((e, i, arr) => {
       const acumulado = isEspresso(method) ? r1(total * e.agua) : Math.round(total * e.agua);
       const despejo = Math.max(0, Math.round((acumulado - prev) * 10) / 10);
       prev = acumulado;
-      return { n: i + 1, t: e.t, acumulado, despejo, desc: e.desc };
+      const t = f === 1 || !e.t ? e.t : Math.round((e.t * f) / 5) * 5;
+      const dren = filtro && i === arr.length - 1 && i > 0 && e.agua >= 1 && arr[i - 1].agua >= 1;
+      return { n: i + 1, t, acumulado, despejo, desc: dren ? `${e.desc} Alvo de término: ${fmtTempo(TS.min)}–${fmtTempo(TS.max)}.` : e.desc };
     });
     return { nome: r.nome, etapas, total };
   }
@@ -635,6 +664,104 @@ window.Engine = (function () {
     return { tentativas: n, status: ok ? 'calibrado' : 'ajustando', melhor, tentativasAteCalibrar: first8 >= 0 ? first8 + 1 : null };
   }
 
+  /* ---------- Aptidão grão × método (escolha pelo método) ----------
+   * Pontua o quanto um grão combina com um método a partir do terroir, da
+   * torra, do perfil (acidez/corpo/doçura), das notas, do processo, do
+   * descanso e do histórico real. Devolve os motivos que pesaram. */
+  const ESTILO = { v60: 'conico', chemex: 'conico', kalita: 'plano', b75: 'plano', melitta: 'plano', 'coador-pano': 'pano', clever: 'imersaoFiltro', aeropress: 'imersaoFiltro', 'prensa-francesa': 'prensa', espresso: 'espresso', moka: 'moka', 'cold-brew': 'cold' };
+  const TORRA_FIT = {
+    conico: { clara: 2, 'media-clara': 1.5, media: 0.5, 'media-escura': -1, escura: -2 },
+    plano: { clara: 1, 'media-clara': 1.5, media: 1, 'media-escura': 0, escura: -1 },
+    pano: { clara: -0.5, 'media-clara': 0.5, media: 1, 'media-escura': 1, escura: 0.5 },
+    imersaoFiltro: { clara: 1, 'media-clara': 1, media: 1, 'media-escura': 0.5, escura: 0 },
+    prensa: { clara: -0.5, 'media-clara': 0.5, media: 1, 'media-escura': 1.5, escura: 1 },
+    espresso: { clara: -1, 'media-clara': 0.5, media: 1.5, 'media-escura': 1.5, escura: 0.5 },
+    moka: { clara: -1.5, 'media-clara': -0.5, media: 1, 'media-escura': 1.5, escura: 1.5 },
+    cold: { clara: -0.5, 'media-clara': 0.5, media: 1, 'media-escura': 1.5, escura: 1 }
+  };
+  const FERMENTADOS = ['anaerobico', 'fermentacao-induzida'];
+  function aptidao(bean, method, opts) {
+    opts = opts || {};
+    const b = bean || {};
+    const reg = DB.regiao[b.regiao] || DB.regiao.outra;
+    const torraId = DB.torra[b.torra] ? b.torra : 'media';
+    const tor = DB.torra[torraId].nome.toLowerCase();
+    const est = ESTILO[baseId(method)] || 'plano';
+    const nomeM = method.curto || method.nome.split(' (')[0];
+    const ac = Number(b.acidez) || reg.acidez || 3, co = Number(b.corpo) || reg.corpo || 3, doc = Number(b.docura) || reg.docura || 3;
+    const canephora = b.especie === 'canephora' || reg.id === 'conilon-capixaba' || reg.id === 'rondonia';
+    const fams = [...new Set(((b.notas && b.notas.length ? b.notas : reg.notas) || []).map(familia).filter(Boolean))];
+    const frutaFloral = fams.includes('fruta') || fams.includes('floral');
+    const chocoDoce = fams.includes('chocolate') || fams.includes('doce');
+    const motivos = [];
+    let score = 0;
+    const m = (v, t) => { if (!v) return; score += v; motivos.push({ v, t }); };
+
+    if (reg.id !== 'outra' && (reg.metodos || []).some((id) => id === method.id || id === baseId(method))) m(1.5, `Indicado para o terroir ${reg.nome}`);
+    const tf = TORRA_FIT[est][torraId] || 0;
+    if (tf >= 1) m(tf, `Torra ${tor} combina com ${nomeM}`);
+    else if (tf <= -1) m(tf, `Torra ${tor} pede cuidado em ${nomeM}`);
+    else if (tf) score += tf;
+
+    if (est === 'conico') {
+      if (ac >= 4) m(1.5, 'Acidez alta brilha na clareza do filtro cônico');
+      if (frutaFloral) m(1, 'Notas frutadas/florais ficam nítidas');
+      if (co >= 4 && ac <= 2) m(-1, 'Perfil encorpado e pouco ácido perde graça no cônico');
+      if (FERMENTADOS.includes(b.processo)) m(0.5, 'Fermentado com xícara limpa e definida');
+    } else if (est === 'plano') {
+      if (doc >= 4) m(1, 'Doçura alta: o fundo plano valoriza o equilíbrio');
+      if (frutaFloral && ac >= 3) m(0.5, 'Extração uniforme preserva as notas de fruta');
+    } else if (est === 'pano') {
+      if (co >= 4) m(1, 'O pano passa óleos e reforça o corpo');
+      if (chocoDoce) m(0.5, 'Notas de chocolate/caramelo ganham textura');
+    } else if (est === 'imersaoFiltro') {
+      if (FERMENTADOS.includes(b.processo)) m(1, 'Fermentados ficam doces e redondos na imersão');
+      if (doc >= 4) m(0.5, 'Imersão entrega doçura com pouca técnica');
+    } else if (est === 'prensa') {
+      if (co >= 4) m(1.5, 'Corpo alto combina com a textura da prensa');
+      if (chocoDoce) m(0.5, 'Chocolate e nozes aparecem bem na imersão longa');
+      if (ac >= 4 && fams.includes('floral')) m(-1, 'Florais delicados se perdem no corpo pesado');
+    } else if (est === 'espresso') {
+      if (co >= 4) m(1, 'Corpo alto sustenta o espresso e o leite');
+      if (chocoDoce) m(1, 'Chocolate/caramelo: perfil clássico de espresso');
+      if (ac >= 4) m(-0.5, 'Acidez alta pode ficar agressiva: use razão mais longa');
+    } else if (est === 'moka') {
+      if (co >= 4) m(1, 'Corpo alto combina com a moka');
+      if (chocoDoce) m(0.5, 'Notas de chocolate resistem bem ao calor da moka');
+      if (ac >= 4) m(-1, 'Acidez alta tende a ficar áspera na moka');
+    } else if (est === 'cold') {
+      if (chocoDoce) m(1, 'Chocolate/caramelo ficam doces no cold brew');
+      if (fams.includes('fruta') && b.processo === 'natural') m(0.5, 'Naturais frutados rendem cold brew licoroso');
+      if (fams.includes('floral')) m(-1, 'Florais quase somem na extração a frio');
+    }
+    if (canephora) m(['espresso', 'moka', 'cold'].includes(est) ? 1.5 : est === 'conico' ? -1.5 : 0, ['espresso', 'moka', 'cold'].includes(est) ? 'Canephora: corpo e crema no método certo' : 'Canephora fica amargo e sem doçura no cônico');
+    if (FERMENTADOS.includes(b.processo) && est === 'espresso') m(-0.5, 'Fermentados podem ficar alcoólicos no espresso');
+
+    // descanso desde a torra
+    if (b.dataTorra) {
+      const dias = Math.floor((Date.now() - new Date(b.dataTorra).getTime()) / 86400000);
+      const faixa = DB.torra[torraId].descansoDias[isPressao(method) ? 'espresso' : 'filtrado'];
+      if (dias >= 0 && dias < faixa[0]) m(-0.5, `Só ${dias} dia(s) de torra: ainda desgaseificando`);
+      else if (dias >= faixa[0] && dias <= faixa[1]) m(0.5, `No ponto de descanso (${dias} dias de torra)`);
+      else if (dias > faixa[1] * 2) m(-0.5, `${dias} dias de torra: já passou do pico`);
+    }
+    // histórico real deste grão neste método
+    const hist = opts.historico || [];
+    let melhor = null;
+    if (hist.length) {
+      melhor = hist.reduce((a, x) => ((Number(x.nota) || 0) > (Number(a.nota) || 0) ? x : a), hist[0]);
+      const cal = calibration(hist);
+      const mn = Number(melhor.nota) || 0;
+      if (cal.status === 'calibrado') m(2, `Já calibrado aqui (melhor nota ${fmtN(mn)})`);
+      else if (mn >= 8) m(1, `Já tirou nota ${fmtN(mn)} neste método`);
+      else if (mn && mn < 6 && hist.length >= 2) m(-0.5, `Notas baixas até agora (melhor ${fmtN(mn)})`);
+    }
+    const r = Math.round(score * 10) / 10;
+    const nivel = r >= 4.5 ? 'otimo' : r >= 2.5 ? 'bom' : r >= 0.5 ? 'possivel' : 'pouco';
+    motivos.sort((a, x) => x.v - a.v);
+    return { score: r, nivel, rotulo: { otimo: 'Ótima escolha', bom: 'Boa escolha', possivel: 'Funciona', pouco: 'Pouco indicado' }[nivel], motivos, tentativas: hist.length, melhor };
+  }
+
   /* ---------- formatação ---------- */
   function fmtTempo(s) {
     s = Math.round(Number(s) || 0);
@@ -648,9 +775,9 @@ window.Engine = (function () {
     const parts = [];
     if (p.clicks != null) parts.push(`${fmtClicks(p.clicks)} cliques`);
     parts.push(`${fmtN(p.dose)} g → ${isEspresso(method) ? fmtN(p.water) + ' g de bebida' : p.water + ' g de água'} (1:${fmtN(p.ratio)})`);
-    if (method.id !== 'cold-brew') parts.push(`${fmtN(p.tempC)} °C`);
+    if (baseId(method) !== 'cold-brew') parts.push(`${fmtN(p.tempC)} °C`);
     return parts.join(' · ');
   }
 
-  return { startingPoint, diagnose, recommend, calibration, ey, receita, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, fmtN, isEspresso, isPressao, tipoMetodo, perfilEsperado, leituraSensorial, familia, ATRIBUTOS };
+  return { baseId, faixaTempo, aptidao, startingPoint, diagnose, recommend, calibration, ey, receita, clicksForMethod, passoAjuste, snap, fmtTempo, fmtClicks, fmtReceita, fmtN, isEspresso, isPressao, tipoMetodo, perfilEsperado, leituraSensorial, familia, ATRIBUTOS };
 })();

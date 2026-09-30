@@ -84,7 +84,7 @@
     if (g && g.especie === 'canephora') mgPorG = 22;
     else if (g && g.especie === 'blend') mgPorG = 15;
     if (g && g.processo === 'descafeinado') mgPorG = 0.3;
-    return dose * mgPorG * (EFICIENCIA[m.id] || 0.95);
+    return dose * mgPorG * (EFICIENCIA[m.base || m.id] || 0.95);
   }
 
   const RAPIDOS = [

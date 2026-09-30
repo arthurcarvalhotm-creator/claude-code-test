@@ -15,9 +15,9 @@
   let state = load();
   function load() {
     try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.graos) return s; } catch (e) { /* ignore */ }
-    return { graos: [], moedores: [], extracoes: [], config: { tema: 'auto', notaAlvo: 8 } };
+    return { graos: [], moedores: [], extracoes: [], metodos: [], config: { tema: 'auto', notaAlvo: 8 } };
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } try { hooks.salvo.forEach((fn) => fn()); } catch (e) { /* módulos ainda não carregados */ } }
+  function save() { registrarMetodos(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } try { hooks.salvo.forEach((fn) => fn()); } catch (e) { /* módulos ainda não carregados */ } }
   /* Importa o catálogo nativo (cafés comprados) e os moedores do usuário sem duplicar */
   function seedCatalogo(force) {
     let n = 0, m = 0;
@@ -59,6 +59,10 @@
       DB.moedoresModelo.filter((mm) => mm.id && mm.umPorClique).forEach((mm) => { const m = state.moedores.find((x) => x.modeloId === mm.id); if (m && !m.umPorClique) m.umPorClique = mm.umPorClique; });
       state.config.moedoresVersao = 5; save();
     }
+    if (!state.config.dose10) { // receitas de partida refeitas com 10 g (espresso 18 g); extrações registradas não mudam
+      state.graos.forEach((g) => { if (g.dosePadrao != null) g.dosePadrao = null; });
+      state.config.dose10 = true; save();
+    }
     if (!state.config.estoqueMigrado) {
       state.graos.forEach((g) => { if (g.catalogoId && g.pesoPacote == null) g.pesoPacote = g.catalogoId === 'netcafes-caramelo-chocolate' ? 500 : 250; });
       state.config.estoqueMigrado = true; save();
@@ -69,6 +73,39 @@
   const moedor = (id) => state.moedores.find((m) => m.id === id);
   const extracao = (id) => state.extracoes.find((x) => x.id === id);
   const metodo = (id) => DB.metodo[id];
+
+  /* ---------------- Métodos: nativos + personalizados ----------------
+   * Os personalizados ficam em state.metodos (sincronizam) e herdam o
+   * comportamento de um método nativo (base) no motor. */
+  const NATIVOS = DB.metodos.slice();
+  const ICO = (k, cls) => (window.IconesMetodo ? window.IconesMetodo.svg(k, cls) : '');
+  function montarMetodo(c) {
+    const b = NATIVOS.find((x) => x.id === c.base) || DB.metodo.v60;
+    const o = Object.assign({}, b, c);
+    o.base = b.base || b.id; // o motor enxerga sempre um método nativo "raiz"
+    o.baseEscolhida = b.id;
+    o.ratio = Object.assign({}, b.ratio, c.ratio); o.tempC = Object.assign({}, b.tempC, c.tempC); o.tempoS = Object.assign({}, b.tempoS, c.tempoS);
+    o.tipo = b.tipo; o.custom = true; o.curto = c.nome;
+    o.receita = c.receita || `Personalizado a partir de ${b.nome}.`;
+    o.ico = c.ico || b.ico || b.id; o.icone = ICO(o.ico);
+    return o;
+  }
+  function registrarMetodos() {
+    if (!Array.isArray(state.metodos)) state.metodos = [];
+    const custom = state.metodos.map(montarMetodo);
+    DB.metodos.length = 0; NATIVOS.concat(custom).forEach((m) => DB.metodos.push(m));
+    Object.keys(DB.metodo).forEach((k) => { if (!NATIVOS.some((n) => n.id === k)) delete DB.metodo[k]; });
+    Object.keys(DB.receitas).forEach((k) => { if (!NATIVOS.some((n) => n.id === k)) delete DB.receitas[k]; });
+    custom.forEach((m) => {
+      DB.metodo[m.id] = m;
+      DB.receitas[m.id] = m.etapas && m.etapas.length ? { nome: m.nome, etapas: m.etapas } : DB.receitas[m.baseEscolhida] || DB.receitas[m.base];
+    });
+  }
+  registrarMetodos();
+  const ocultos = () => state.config.metodosOcultos || [];
+  const metodoVisivel = (m) => m && !m.arquivado && !ocultos().includes(m.id);
+  const metodosVisiveis = () => DB.metodos.filter(metodoVisivel);
+  const nomeCurto = (m) => m.curto || m.nome.split(' (')[0];
 
   /* Histórico grão × método × moedor em ordem cronológica, com diag */
   function historico(graoId, metodoId, moedorId) {
@@ -166,9 +203,9 @@
     const view = $('#view');
     closeModal();
     view.innerHTML = '';
-    const top = ['inicio', 'diario', 'nova', 'graos', 'mais'].includes(r.name) && !r.id;
+    const top = ['inicio', 'diario', 'nova', 'graos', 'mais', 'escolher'].includes(r.name) && !r.id;
     $('#btnBack').hidden = top;
-    $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === r.name || (r.name === 'grao' && a.dataset.route === 'graos') || (r.name === 'extracao' && a.dataset.route === 'diario') || (['moedores', 'biblioteca', 'ajustes', 'cafeina', 'latte'].includes(r.name) && a.dataset.route === 'mais')));
+    $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === r.name || (r.name === 'grao' && a.dataset.route === 'graos') || (r.name === 'extracao' && a.dataset.route === 'diario') || (r.name === 'escolher' && a.dataset.route === 'nova') || (['moedores', 'equipamentos', 'biblioteca', 'ajustes', 'cafeina', 'latte'].includes(r.name) && a.dataset.route === 'mais')));
     fn(view, r);
     rotularTabelas(view);
     bindChips(view);
@@ -258,7 +295,8 @@
     const timer = ult && g ? `<a class="qa-tile" href="#/nova?from=${ult.id}&repetir=1&timer=1"><span class="qa-ico">⏱</span><span class="qa-t">Timer guiado</span><span class="qa-s">com a última receita</span></a>` : '';
     const est = estoqueResumo();
     const estoque = `<a class="qa-tile" href="#/graos?estoque=1"><span class="qa-ico">📦</span><span class="qa-t">Estoque</span><span class="qa-s">${est.total ? `${est.gramas} g em ${est.total} grão(s)` : 'informe o peso dos pacotes'}</span>${est.acabando ? `<span class="badge sobre">⚠ ${est.acabando} acabando</span>` : ''}</a>`;
-    return rep + timer + estoque;
+    const porMetodo = `<a class="qa-tile" href="#/escolher"><span class="qa-ico">${ICO('v60')}</span><span class="qa-t">Escolher por método</span><span class="qa-s">veja os cafés indicados</span></a>`;
+    return rep + porMetodo + timer + estoque;
   }
 
   /* ---------- Estoque ---------- */
@@ -269,7 +307,7 @@
   }
   function dosesRestantes(g, r) {
     const xs = state.extracoes.filter((x) => x.graoId === g.id);
-    const dose = xs.length ? xs.reduce((s, x) => s + (+x.dose || 0), 0) / xs.length : (+g.dosePadrao || 15);
+    const dose = xs.length ? xs.reduce((s, x) => s + (+x.dose || 0), 0) / xs.length : (+g.dosePadrao || 10);
     return Math.floor(r / dose);
   }
   function estoqueResumo() {
@@ -317,7 +355,7 @@
   routes.extracao = (view, r) => {
     const x = extracao(r.id); if (!x) { view.innerHTML = '<div class="empty">Extração não encontrada.</div>'; return; }
     withDiag(x);
-    const g = grao(x.graoId), m = metodo(x.metodoId), md = moedor(x.moedorId);
+    const g = grao(x.graoId), m = metodo(x.metodoId) || Object.assign({}, DB.metodo.v60, { id: x.metodoId, nome: '(método removido)' }), md = moedor(x.moedorId);
     $('#title').textContent = 'Extração';
     const hist = historico(x.graoId, x.metodoId, x.moedorId);
     const idx = hist.findIndex((h) => h.id === x.id);
@@ -401,7 +439,7 @@
         <div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v">${p.water} g</div></div>
         <div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(p.ratio)}</div></div>
         ${m.id !== 'cold-brew' ? `<div><span class="lbl">Temperatura</span><div class="v">${E.fmtN(p.tempC)} °C</div></div>` : ''}
-        <div><span class="lbl">${E.tipoMetodo(m) === 'imersao' ? 'Tempo de imersão' : 'Tempo alvo'}</span><div class="v">${E.tipoMetodo(m) === 'imersao' ? E.fmtTempo(p.tempoS) : `${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}`}</div></div>
+        <div><span class="lbl">${E.tipoMetodo(m) === 'imersao' ? 'Tempo de imersão' : 'Tempo alvo'}</span><div class="v">${E.tipoMetodo(m) === 'imersao' ? E.fmtTempo(p.tempoS) : (() => { const T = E.faixaTempo(m, p.dose); return `${E.fmtTempo(T.min)}–${E.fmtTempo(T.max)}`; })()}</div></div>
       </div>
       ${(() => { const rc = E.receita(m, p.dose, p.water); return rc ? `<details class="recipe" style="margin-top:10px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
       ${x ? `<div class="inline-actions"><a class="btn primary" href="#/nova?from=${x.id}">Preparar com esta receita →</a></div>` : ''}
@@ -410,6 +448,9 @@
 
   /* ======================= NOVA EXTRAÇÃO ======================= */
   routes.nova = (view, r) => {
+    // preferência: começar pelo grão ou pelo método
+    if (r.q.modo === 'grao' && state.config.modoNova !== 'grao') { state.config.modoNova = 'grao'; save(); }
+    if (state.config.modoNova === 'metodo' && !r.q.editar && !r.q.from && !r.q.grao && !r.q.metodo && !r.q.modo) return routes.escolher(view, r);
     const editando = r.q.editar ? extracao(r.q.editar) : null;
     if (r.q.editar && !editando) { view.innerHTML = '<div class="empty">Extração não encontrada.</div>'; return; }
     $('#title').textContent = editando ? 'Editar extração' : 'Nova extração';
@@ -418,15 +459,18 @@
     const copiar = !!r.q.copiar, repetir = !!r.q.repetir;
     const pre = {
       graoId: (from && from.graoId) || r.q.grao || state.graos[0].id,
-      metodoId: (from && from.metodoId) || r.q.metodo || 'v60',
+      metodoId: (from && from.metodoId) || (metodo(r.q.metodo) && r.q.metodo) || (metodosVisiveis()[0] || DB.metodo.v60).id,
       moedorId: (from && from.moedorId) || r.q.moedor || (state.moedores[0] || {}).id || ''
     };
+    const mVia = r.q.via === 'metodo' ? metodo(pre.metodoId) : null;
     view.innerHTML = `
+      ${editando || from ? '' : segModo(mVia ? 'metodo' : 'grao')}
+      ${mVia ? `<p class="text-2" style="margin:0 0 10px"><small><a href="#/escolher/${mVia.id}">← outros cafés para ${esc(nomeCurto(mVia))}</a></small></p>` : ''}
       <form id="fNova" autocomplete="off">
         <div class="card">
           <div class="form-grid">
             <label class="field"><span class="lbl">Grão</span>${sel('graoId', state.graos.filter((g) => !g.arquivado || g.id === pre.graoId).map((g) => ({ id: g.id, nome: g.nome })), pre.graoId)}</label>
-            <label class="field"><span class="lbl">Método</span>${sel('metodoId', DB.metodos.map((m) => ({ id: m.id, nome: `${m.icone} ${m.nome}` })), pre.metodoId)}</label>
+            <label class="field"><span class="lbl">Método</span>${sel('metodoId', DB.metodos.filter((m) => metodoVisivel(m) || m.id === pre.metodoId).map((m) => ({ id: m.id, nome: m.nome })), pre.metodoId)}</label>
             <label class="field"><span class="lbl">Moedor</span>${sel('moedorId', [{ id: '', nome: '— sem moedor —' }].concat(state.moedores.map((m) => ({ id: m.id, nome: m.nome }))), pre.moedorId)}</label>
             <label class="field"><span class="lbl">Data e hora</span><input type="datetime-local" name="data" value="${editando ? isoLocal(editando.data) : nowLocal()}"></label>
           </div>
@@ -436,8 +480,8 @@
           <h3>Receita executada</h3>
           <div class="form-grid">
             <label class="field"><span class="lbl">Moagem (cliques)</span><input type="number" name="clicks" inputmode="decimal" step="any"><div class="help" id="hClicks"></div></label>
-            <label class="field"><span class="lbl">Dose (g)</span><input type="number" name="dose" inputmode="decimal" step="0.1" required></label>
-            <label class="field"><span class="lbl" id="lWater">Água (g)</span><input type="number" name="water" inputmode="decimal" step="0.1" required></label>
+            <label class="field"><span class="lbl">Dose (g)</span><input type="number" name="dose" inputmode="decimal" step="0.1" required><div class="help">Mudar a dose recalcula a água mantendo a razão.</div></label>
+            <label class="field"><span class="lbl" id="lWater">Água (g)</span><input type="number" name="water" inputmode="decimal" step="0.1" required><div class="help">Editar recalcula a razão.</div></label>
             <label class="field"><span class="lbl">Razão (1:x)</span><input type="number" name="ratio" inputmode="decimal" step="0.01"><div class="help">Editar recalcula a água.</div></label>
             <label class="field"><span class="lbl">Temperatura (°C)</span><input type="number" name="tempC" inputmode="decimal" step="0.5" required></label>
             <label class="field"><span class="lbl">Tempo de contato</span><input type="text" name="tempo" inputmode="numeric" placeholder="2:45 · 28 · 14h"><div class="help" id="hTempo"></div></label>
@@ -503,7 +547,35 @@
       if (p.clicks != null && F('moedorId').value) F('clicks').value = p.clicks;
       F('dose').value = p.dose; F('ratio').value = p.ratio; F('water').value = p.water; F('tempC').value = p.tempC;
       if (p.tempoS && !F('tempo').value) F('tempo').value = E.fmtTempo(p.tempoS).replace(' s', '').replace(' h', 'h');
+      aguaAnterior = +p.water || null;
       preencherPlano();
+      atualizarReferencia();
+    }
+    /* Dose ↔ água ↔ razão. Mexer na dose recalcula a água mantendo a razão;
+     * os despejos e o card de referência acompanham a nova água. */
+    let aguaAnterior = null, camposTocados = false, doseTocada = false, refReceita = null;
+    const arred = (v) => (E.isEspresso(ctx().m) ? Math.round(v * 10) / 10 : Math.round(v));
+    const escalada = (p, d) => (d && p && d !== p.dose ? Object.assign({}, p, { dose: d, water: arred(d * p.ratio) }) : p);
+    function escalarDespejos(nova) {
+      const velha = aguaAnterior; aguaAnterior = nova || null;
+      if (!velha || !nova || velha === nova) return;
+      const k = nova / velha;
+      $$('#pours tr[data-row] [name=pa]').forEach((i) => { if (i.value === '') return; i.value = Math.abs(+i.value - velha) < 0.05 ? nova : arred(+i.value * k); });
+    }
+    function hintTempo() {
+      const { m } = ctx(), h = $('#hTempo'); if (!h || !m) return;
+      if (E.tipoMetodo(m) === 'filtro') { const T = E.faixaTempo(m, +F('dose').value || m.dosePadrao); h.textContent = `Faixa para ${E.fmtN(+F('dose').value || m.dosePadrao)} g: ${E.fmtTempo(T.min)}–${E.fmtTempo(T.max)}`; }
+      else h.textContent = `Faixa do método: ${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}`;
+    }
+    function atualizarReferencia() {
+      hintTempo();
+      const box = $('#sugestao'); if (!refReceita || !box) return;
+      const { m } = ctx(), d = +F('dose').value || refReceita.dose, p = escalada(refReceita, d);
+      const set = (k, v) => { const el = $(`[data-ref="${k}"]`, box); if (el) el.innerHTML = v; };
+      set('dose', `${E.fmtN(p.dose)} g`); set('water', `${E.fmtN(p.water)} g`);
+      if (E.tipoMetodo(m) === 'filtro') { const T = E.faixaTempo(m, p.dose); set('tempo', `${E.fmtTempo(T.min)}–${E.fmtTempo(T.max)}`); }
+      set('nota', p.dose !== refReceita.dose ? `Referência ajustada para ${E.fmtN(p.dose)} g, mantendo a razão 1:${E.fmtN(p.ratio)} (sugestão original: ${E.fmtN(refReceita.dose)} g → ${E.fmtN(refReceita.water)} g).` : '');
+      const pl = $('[data-ref="plano"]', box); if (pl) { const rc = E.receita(m, p.dose, p.water); pl.innerHTML = rc ? tabelaReceita(rc, m, false) : ''; }
     }
     function preencherPlano() {
       const { m } = ctx();
@@ -538,10 +610,10 @@
     function renderSugestao() {
       const { g, m, md } = ctx();
       $('#lWater').textContent = E.isEspresso(m) ? 'Bebida na xícara (g)' : 'Água (g)';
-      $('#hTempo').textContent = `Faixa do método: ${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}`;
+      hintTempo();
       if (md) { F('clicks').min = md.min; F('clicks').max = md.max; F('clicks').step = md.passo || 1; $('#hClicks').textContent = `${md.nome}: ${md.min}–${md.max}, passo ${md.passo || 1} (${md.direcao === 'maior=fino' ? 'maior = mais fino' : 'menor = mais fino'})`; }
       else $('#hClicks').textContent = 'Cadastre um moedor para receber cliques exatos.';
-      if (editando) { $('#sugestao').innerHTML = `<div class="card soft" style="margin-top:12px"><strong>✏️ Editando o registro de ${fmtData(editando.data)}</strong><div class="help">Corrija o que for preciso e salve. O diagnóstico e as recomendações são recalculados com os novos valores.</div></div>`; return null; }
+      if (editando) { refReceita = null; $('#sugestao').innerHTML = `<div class="card soft" style="margin-top:12px"><strong>✏️ Editando o registro de ${fmtData(editando.data)}</strong><div class="help">Corrija o que for preciso e salve. O diagnóstico e as recomendações são recalculados com os novos valores.</div></div>`; return null; }
       const hist = historico(g.id, m.id, md ? md.id : '');
       let html, receita;
       if (hist.length) {
@@ -553,7 +625,9 @@
           <small>Última: ${fmtData(ult.data)} · nota ${ult.nota || '—'} · ${esc(ult.diag.rotulo)}</small>
           ${leituraHtml(reco)}
           ${acoesHtml(reco)}
-          ${(() => { const rc = E.receita(m, reco.prox.dose, reco.prox.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
+          <div class="kv" style="margin-top:8px"><div><span class="lbl">Dose</span><div class="v" data-ref="dose">${E.fmtN(reco.prox.dose)} g</div></div><div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v" data-ref="water">${E.fmtN(reco.prox.water)} g</div></div><div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(reco.prox.ratio)}</div></div></div>
+          <small class="muted" data-ref="nota"></small>
+          ${(() => { const rc = E.receita(m, reco.prox.dose, reco.prox.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary><div data-ref="plano">${tabelaReceita(rc, m, false)}</div></details>` : ''; })()}
           <div class="inline-actions"><button class="btn primary sm" type="button" id="usar">Usar esta receita</button><a class="btn sm" href="#/extracao/${ult.id}">Ver última</a></div>
         </div>`;
       } else {
@@ -563,25 +637,44 @@
           <div class="row between"><h3>Ponto de partida sugerido</h3><span class="badge accent">1ª extração</span></div>
           <div class="kv">
             ${sp.clicks != null ? `<div><span class="lbl">Moagem</span><div class="v">${E.fmtClicks(sp.clicks)} cl</div></div>` : ''}
-            <div><span class="lbl">Dose</span><div class="v">${sp.dose} g</div></div>
-            <div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v">${sp.water} g</div></div>
-            <div><span class="lbl">Razão</span><div class="v">1:${sp.ratio}</div></div>
-            <div><span class="lbl">Temp.</span><div class="v">${sp.tempC} °C</div></div>
-            <div><span class="lbl">Tempo alvo</span><div class="v">${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</div></div>
+            <div><span class="lbl">Dose</span><div class="v" data-ref="dose">${E.fmtN(sp.dose)} g</div></div>
+            <div><span class="lbl">${E.isEspresso(m) ? 'Bebida' : 'Água'}</span><div class="v" data-ref="water">${E.fmtN(sp.water)} g</div></div>
+            <div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(sp.ratio)}</div></div>
+            <div><span class="lbl">Temp.</span><div class="v">${E.fmtN(sp.tempC)} °C</div></div>
+            <div><span class="lbl">${E.tipoMetodo(m) === 'imersao' ? 'Imersão' : 'Tempo alvo'}</span><div class="v" data-ref="tempo">${E.tipoMetodo(m) === 'imersao' ? E.fmtTempo(sp.tempoS) : `${E.fmtTempo(sp.faixaTempo.min)}–${E.fmtTempo(sp.faixaTempo.max)}`}</div></div>
           </div>
+          <small class="muted" data-ref="nota"></small>
           <ul class="factors" style="margin:8px 0 0;padding-left:18px">${sp.por.map((p) => `<li>${esc(p)}</li>`).join('')}<li>${esc(m.receita)}</li></ul>
-          ${(() => { const rc = E.receita(m, sp.dose, sp.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''; })()}
+          ${(() => { const rc = E.receita(m, sp.dose, sp.water); return rc ? `<details class="recipe" style="margin-top:8px"><summary>Plano de despejos · ${esc(rc.nome)}</summary><div data-ref="plano">${tabelaReceita(rc, m, false)}</div></details>` : ''; })()}
           <div class="inline-actions"><button class="btn primary sm" type="button" id="usar">Usar esta receita</button></div>
         </div>`;
       }
       $('#sugestao').innerHTML = html;
-      $('#usar').onclick = () => { aplicarReceita(receita); toast('Receita aplicada aos campos'); };
+      refReceita = receita;
+      $('#usar').onclick = () => { const d = +F('dose').value; aplicarReceita(doseTocada && d ? escalada(receita, d) : receita); camposTocados = false; toast('Receita aplicada aos campos'); };
       return receita;
     }
-    ['graoId', 'metodoId', 'moedorId'].forEach((n) => F(n).addEventListener('change', () => { const rec = renderSugestao(); if (rec && !F('dose').value) aplicarReceita(rec); aplicarPerfilEsperado(); }));
-    F('ratio').addEventListener('input', () => { const d = +F('dose').value, rt = +F('ratio').value; if (d && rt) F('water').value = E.isEspresso(ctx().m) ? Math.round(d * rt * 10) / 10 : Math.round(d * rt); });
-    const recalcRatio = () => { const d = +F('dose').value, w = +F('water').value; if (d && w) F('ratio').value = Math.round((w / d) * 100) / 100; };
-    F('dose').addEventListener('input', recalcRatio); F('water').addEventListener('input', recalcRatio);
+    let mAnterior = ctx().m;
+    ['graoId', 'metodoId', 'moedorId'].forEach((n) => F(n).addEventListener('change', () => {
+      const m0 = mAnterior; mAnterior = ctx().m;
+      const rec = renderSugestao();
+      // troca de grão/método aplica a nova referência (se você não editou os campos), mantendo a dose que você escolheu
+      if (rec && (!F('dose').value || (!camposTocados && !editando))) {
+        const manter = doseTocada && +F('dose').value && E.isEspresso(m0) === E.isEspresso(mAnterior);
+        aplicarReceita(manter ? escalada(rec, +F('dose').value) : rec);
+      } else atualizarReferencia();
+      aplicarPerfilEsperado();
+    }));
+    ['clicks', 'tempC'].forEach((n) => F(n).addEventListener('input', () => { camposTocados = true; }));
+    F('dose').addEventListener('input', () => {
+      doseTocada = true;
+      const d = +F('dose').value, rt = +F('ratio').value;
+      if (d && rt) { F('water').value = arred(d * rt); escalarDespejos(+F('water').value); }
+      else if (d && +F('water').value) F('ratio').value = Math.round((+F('water').value / d) * 100) / 100;
+      atualizarReferencia();
+    });
+    F('ratio').addEventListener('input', () => { camposTocados = true; const d = +F('dose').value, rt = +F('ratio').value; if (d && rt) { F('water').value = arred(d * rt); escalarDespejos(+F('water').value); } });
+    F('water').addEventListener('input', () => { camposTocados = true; const d = +F('dose').value, w = +F('water').value; if (d && w) F('ratio').value = Math.round((w / d) * 100) / 100; escalarDespejos(w); });
 
     const rec0 = renderSugestao();
     function preencherSensorial(src) {
@@ -654,6 +747,228 @@
     });
   };
 
+  /* ======================= ESCOLHER PELO MÉTODO ======================= */
+  function segModo(ativo) {
+    return `<div class="seg" role="group" aria-label="Começar a extração">
+      <a class="seg-btn ${ativo === 'grao' ? 'on' : ''}" href="#/nova?modo=grao">${BEAN}<span>Pelo grão</span></a>
+      <a class="seg-btn ${ativo === 'metodo' ? 'on' : ''}" href="#/escolher">${ICO('v60')}<span>Pelo método</span></a>
+    </div>`;
+  }
+  /* Grãos ativos ordenados pela aptidão ao método (terroir, torra, perfil, histórico, estoque) */
+  function cafesParaMetodo(m) {
+    return state.graos.filter((g) => !g.arquivado).map((g) => {
+      const hist = state.extracoes.filter((x) => x.graoId === g.id && x.metodoId === m.id).sort((a, b) => new Date(a.data) - new Date(b.data)).map(withDiag);
+      const apt = E.aptidao(g, m, { historico: hist });
+      const r = restante(g);
+      return { g, apt, r, semEstoque: r != null && r <= 0 };
+    }).sort((a, b) => b.apt.score - a.apt.score);
+  }
+  routes.escolher = (view, r) => {
+    if (state.config.modoNova !== 'metodo') { state.config.modoNova = 'metodo'; save(); }
+    if (r.id) return metodoEscolhido(view, r);
+    $('#title').textContent = 'Nova extração';
+    const ms = metodosVisiveis();
+    view.innerHTML = `
+      ${segModo('metodo')}
+      <p class="text-2" style="margin:0 0 12px"><small>Escolha o método e eu indico os cafés do seu estoque que combinam com ele.</small></p>
+      <div class="mt-grid">
+        ${ms.map((m) => {
+          const cs = cafesParaMetodo(m).filter((c) => !c.semEstoque), ot = cs.filter((c) => c.apt.nivel === 'otimo').length, bo = cs.filter((c) => c.apt.nivel === 'bom').length;
+          const sub = ot ? `${ot} ótima${ot > 1 ? 's' : ''} escolha${ot > 1 ? 's' : ''}` : bo ? `${bo} boa${bo > 1 ? 's' : ''} opç${bo > 1 ? 'ões' : 'ão'}` : '&nbsp;';
+          return `<a class="mt-tile" href="#/escolher/${m.id}"><span class="mt-card">${m.icone}</span><span class="mt-nome">${esc(nomeCurto(m))}</span><span class="mt-sub">${sub}</span></a>`;
+        }).join('')}
+        <a class="mt-tile" href="#/equipamentos?novoMetodo=1"><span class="mt-card add">${ICO('personalizado')}</span><span class="mt-nome">Personalizado</span><span class="mt-sub">criar método</span></a>
+      </div>
+      ${ocultos().length ? `<p style="margin-top:10px"><small class="muted">${ocultos().length} método(s) oculto(s) · <a href="#/equipamentos">mostrar</a></small></p>` : ''}`;
+  };
+  function metodoEscolhido(view, r) {
+    const m = metodo(r.id);
+    if (!m) { view.innerHTML = '<div class="empty">Método não encontrado.</div>'; return; }
+    $('#title').textContent = nomeCurto(m);
+    const lista = cafesParaMetodo(m);
+    const md = state.moedores[0];
+    const T = E.faixaTempo(m, m.dosePadrao);
+    const agua = E.isEspresso(m) ? Math.round(m.dosePadrao * m.ratio.padrao * 10) / 10 : Math.round(m.dosePadrao * m.ratio.padrao);
+    const item = (c) => {
+      const sp = E.startingPoint(c.g, m, md);
+      const pos = c.apt.motivos.filter((x) => x.v > 0).slice(0, 3), neg = c.apt.motivos.filter((x) => x.v < 0).slice(0, 1);
+      const cls = { otimo: 'ok', bom: 'accent', possivel: '', pouco: 'sobre' }[c.apt.nivel];
+      return `<a class="item rec-cafe" href="#/nova?grao=${c.g.id}&metodo=${m.id}&via=metodo">
+        <div class="ico">${BEAN}</div>
+        <div><div class="t">${esc(c.g.nome)} <span class="badge ${c.semEstoque ? '' : cls}">${c.semEstoque ? 'sem estoque' : esc(c.apt.rotulo)}</span></div>
+          <div class="s">${esc((DB.regiao[c.g.regiao] || {}).nome || '')} · ${esc(((DB.processo[c.g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[c.g.torra] || {}).nome || '').toLowerCase())}</div>
+          ${pos.length || neg.length ? `<ul class="motivos">${pos.map((x) => `<li class="pos">${esc(x.t)}</li>`).join('')}${neg.map((x) => `<li class="neg">${esc(x.t)}</li>`).join('')}</ul>` : ''}
+          <div class="s">${c.apt.tentativas ? `${c.apt.tentativas} extração(ões) neste método · ` : 'Partida: '}${sp.clicks != null ? E.fmtClicks(sp.clicks) + ' cl · ' : ''}${E.fmtN(sp.dose)} g → ${E.fmtN(sp.water)} g · ${E.fmtN(sp.tempC)} °C</div>
+          ${badgeEstoque(c.g) ? `<div style="margin-top:4px">${badgeEstoque(c.g)}</div>` : ''}
+        </div><div class="right">›</div></a>`;
+    };
+    const ok = lista.filter((c) => !c.semEstoque);
+    const top = ok.filter((c) => c.apt.score >= 2.5), meio = ok.filter((c) => c.apt.score >= 0.5 && c.apt.score < 2.5), baixo = ok.filter((c) => c.apt.score < 0.5), sem = lista.filter((c) => c.semEstoque);
+    view.innerHTML = `
+      ${segModo('metodo')}
+      <div class="card mt-head">
+        <div class="mt-card">${m.icone}</div>
+        <div><h2>${esc(m.nome)}</h2><small>${esc(m.tipo)}${m.custom ? ' · personalizado' : ''} · moagem ${esc((m.grindDesc || '').toLowerCase())}</small></div>
+          <div class="kv">
+            <div><span class="lbl">Receita base</span><div class="v">${E.fmtN(m.dosePadrao)} g → ${E.fmtN(agua)} g</div></div>
+            <div><span class="lbl">Razão</span><div class="v">1:${E.fmtN(m.ratio.padrao)}</div></div>
+            <div><span class="lbl">Temp.</span><div class="v">${E.fmtN(m.tempC.padrao)} °C</div></div>
+            <div><span class="lbl">Tempo</span><div class="v">${E.fmtTempo(T.min)}–${E.fmtTempo(T.max)}</div></div>
+          </div>
+      </div>
+      <p class="text-2" style="margin:8px 0 0"><small>${esc(m.receita || '')}</small></p>
+      <div class="section-title"><h2>Cafés recomendados</h2>${m.custom ? `<a href="#/equipamentos?metodo=${m.id}">editar método</a>` : ''}</div>
+      ${!state.graos.length ? `<div class="empty"><div class="big">${BEAN}</div>Cadastre seus grãos para receber indicações.<div style="margin-top:12px"><a class="btn primary" href="#/graos?novo=1">Cadastrar grão</a></div></div>` : ''}
+      ${top.length ? `<div class="list">${top.map(item).join('')}</div>` : state.graos.length ? '<div class="card soft"><small>Nenhum café do estoque se destaca neste método. Veja abaixo os que também funcionam.</small></div>' : ''}
+      ${meio.length ? `<div class="section-title"><h3 style="margin:0">Também funcionam</h3></div><div class="list">${meio.map(item).join('')}</div>` : ''}
+      ${baixo.length ? `<details class="lib" style="margin-top:12px"><summary>Pouco indicados (${baixo.length})</summary><div class="list" style="padding:8px">${baixo.map(item).join('')}</div></details>` : ''}
+      ${sem.length ? `<details class="lib" style="margin-top:8px"><summary>Sem estoque (${sem.length})</summary><div class="list" style="padding:8px">${sem.map(item).join('')}</div></details>` : ''}
+      <p style="margin-top:12px"><small class="muted">A indicação combina terroir, torra, perfil (acidez, corpo, doçura), notas, processo, dias de torra e o que você já registrou neste método.${md ? ` Cliques para ${esc(md.nome)}.` : ''}</small></p>`;
+  }
+
+  /* ======================= EQUIPAMENTOS (métodos + moedores) ======================= */
+  routes.equipamentos = (view, r) => {
+    $('#title').textContent = 'Equipamentos';
+    const usoM = (id) => state.extracoes.filter((x) => x.metodoId === id).length;
+    view.innerHTML = `
+      <div class="section-title" style="margin-top:0"><h2>Métodos de preparo</h2><button class="btn primary sm" id="novoMet">＋ Novo método</button></div>
+      <div class="list">${DB.metodos.map((m) => `<div class="item" data-met="${m.id}">
+        <div class="ico m">${m.icone}</div>
+        <div><div class="t">${esc(m.nome)} ${m.custom ? '<span class="badge accent">personalizado</span>' : ''} ${m.arquivado ? '<span class="badge">arquivado</span>' : ocultos().includes(m.id) ? '<span class="badge">oculto</span>' : ''}</div>
+          <div class="s">${esc(m.tipo)} · ${E.fmtN(m.dosePadrao)} g · 1:${E.fmtN(m.ratio.padrao)} · ${E.fmtN(m.tempC.padrao)} °C${m.custom ? ` · base ${esc(nomeCurto(metodo(m.baseEscolhida) || {}))}` : ''}${usoM(m.id) ? ` · ${usoM(m.id)} extração(ões)` : ''}</div></div>
+        <div>›</div></div>`).join('')}</div>
+      <div class="section-title"><h2>Moedores</h2><button class="btn sm" id="novoMo">＋ Novo moedor</button></div>
+      <div class="list">${state.moedores.length ? state.moedores.map((md) => `<div class="item" data-mo="${md.id}"><div class="ico">⚙️</div><div><div class="t">${esc(md.nome)}</div><div class="s">${esc(md.tipo)} · escala ${md.min}–${md.max}, passo ${md.passo}${md.umPorClique ? ` · ${E.fmtN(md.umPorClique)} µm/clique` : ''}</div></div><div>›</div></div>`).join('') : '<div class="empty">Nenhum moedor cadastrado.</div>'}</div>`;
+    $('#novoMet').onclick = () => formMetodo();
+    $('#novoMo').onclick = () => formMoedor();
+    $$('[data-met]', view).forEach((el) => (el.onclick = () => { const m = metodo(el.dataset.met); if (m.custom) formMetodo(state.metodos.find((c) => c.id === m.id)); else detalheMetodoNativo(m); }));
+    $$('[data-mo]', view).forEach((el) => (el.onclick = () => formMoedor(moedor(el.dataset.mo))));
+    if (r.q.novoMetodo) { history.replaceState(null, '', '#/equipamentos'); formMetodo(); }
+    else if (r.q.metodo) { const c = state.metodos.find((x) => x.id === r.q.metodo); history.replaceState(null, '', '#/equipamentos'); if (c) formMetodo(c); }
+  };
+  function detalheMetodoNativo(m) {
+    const T = E.faixaTempo(m, m.dosePadrao), rc = E.receita(m, m.dosePadrao);
+    modal(`<div class="sheet-head"><h2 class="row" style="gap:8px">${m.icone} ${esc(m.nome)}</h2><button class="btn sm ghost" data-close>✕</button></div>
+      <p><strong>Razão:</strong> 1:${E.fmtN(m.ratio.min)}–1:${E.fmtN(m.ratio.max)} (padrão 1:${E.fmtN(m.ratio.padrao)}) · <strong>Dose de partida:</strong> ${E.fmtN(m.dosePadrao)} g</p>
+      <p><strong>Temperatura:</strong> ${m.tempC.min}–${m.tempC.max} °C · <strong>Tempo:</strong> ${E.fmtTempo(T.min)}–${E.fmtTempo(T.max)}${E.tipoMetodo(m) === 'filtro' ? ` (para ${E.fmtN(m.dosePadrao)} g)` : ''}</p>
+      <p><strong>Moagem:</strong> ${esc(m.grindDesc)}</p>
+      <p class="text-2">${esc(m.sensibilidade)}</p>
+      ${rc ? `<details class="recipe"><summary>Plano de despejos · ${esc(rc.nome)}</summary>${tabelaReceita(rc, m, false)}</details>` : ''}
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="vis" ${ocultos().includes(m.id) ? '' : 'checked'}> Mostrar na escolha por método e na nova extração</label>
+      <div class="sheet-foot"><button type="button" class="btn" id="variar">Criar versão personalizada</button><button type="button" class="btn primary" data-close>Fechar</button></div>`, (sheet) => {
+      $('#vis', sheet).onchange = (e) => { const o = ocultos().filter((x) => x !== m.id); if (!e.target.checked) o.push(m.id); state.config.metodosOcultos = o; save(); render(); };
+      $('#variar', sheet).onclick = () => formMetodo(null, m);
+    });
+  }
+  /* Método personalizado: herda o comportamento de um método nativo (base) */
+  function formMetodo(c, deBase) {
+    const isNew = !c;
+    const b0 = deBase || DB.metodo.v60;
+    c = c || { nome: deBase ? `${nomeCurto(deBase)} (minha versão)` : '', ico: deBase ? deBase.ico : 'chaleira', base: b0.id, dosePadrao: b0.dosePadrao, ratio: { ...b0.ratio }, tempC: { ...b0.tempC }, tempoS: { ...b0.tempoS }, grind: b0.grind, grindDesc: b0.grindDesc, fluxo: b0.fluxo, receita: '', etapas: [] };
+    const baseM = () => NATIVOS.find((x) => x.id === $('#fMet [name=base]').value) || DB.metodo.v60;
+    const tempoTxt = (v) => (v == null ? '' : E.fmtTempo(v).replace(' s', '').replace(' h', 'h'));
+    const usos = c.id ? state.extracoes.filter((x) => x.metodoId === c.id).length : 0;
+    const planoAtual = () => {
+      const bm = NATIVOS.find((x) => x.id === c.base) || b0;
+      const tot = Math.round((c.dosePadrao || 10) * ((c.ratio && c.ratio.padrao) || bm.ratio.padrao));
+      if (c.etapas && c.etapas.length) return { etapas: c.etapas.map((e) => ({ t: e.t, acumulado: Math.round(tot * e.agua), desc: e.desc })) };
+      return E.receita(bm, c.dosePadrao || bm.dosePadrao, tot);
+    };
+    modal(`<div class="sheet-head"><h2>${isNew ? 'Novo método' : 'Editar método'}</h2><button class="btn sm ghost" data-close>✕</button></div>
+      <form id="fMet" autocomplete="off">
+        <div class="form-grid">
+          <label class="field full"><span class="lbl">Nome *</span><input type="text" name="nome" value="${esc(c.nome)}" required placeholder="ex.: Origami, Orea, Hario Switch…"></label>
+          <label class="field full"><span class="lbl">Comporta-se como (tipo base)</span>${sel('base', NATIVOS.map((m) => ({ id: m.id, nome: `${m.nome} · ${m.tipo}` })), c.base)}<div class="help">O motor usa o diagnóstico, as faixas e a referência de moagem do método base. Você ajusta os números abaixo.</div></label>
+        </div>
+        <div class="lbl">Ícone</div>
+        <div class="ico-pick">${window.IconesMetodo.escolhas.map((i) => `<label title="${esc(i.nome)}"><input type="radio" name="ico" value="${i.id}" ${i.id === c.ico ? 'checked' : ''}><span>${ICO(i.id)}</span></label>`).join('')}</div>
+        <div class="form-grid" style="margin-top:10px">
+          <label class="field"><span class="lbl">Dose padrão (g)</span><input type="number" name="dosePadrao" value="${c.dosePadrao}" step="0.1" inputmode="decimal" required></label>
+          <label class="field"><span class="lbl">Razão padrão (1:x)</span><input type="number" name="rPad" value="${c.ratio.padrao}" step="0.1" inputmode="decimal" required></label>
+          <label class="field"><span class="lbl">Razão mín.</span><input type="number" name="rMin" value="${c.ratio.min}" step="0.1" inputmode="decimal"></label>
+          <label class="field"><span class="lbl">Razão máx.</span><input type="number" name="rMax" value="${c.ratio.max}" step="0.1" inputmode="decimal"></label>
+          <label class="field"><span class="lbl">Temperatura padrão (°C)</span><input type="number" name="tPad" value="${c.tempC.padrao}" step="0.5" inputmode="decimal" required></label>
+          <label class="field"><span class="lbl">Temp. mín. / máx.</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" name="tMin" value="${c.tempC.min}" step="0.5" inputmode="decimal"><input type="number" name="tMax" value="${c.tempC.max}" step="0.5" inputmode="decimal"></div></label>
+          <label class="field"><span class="lbl">Tempo alvo</span><input type="text" name="sPad" value="${tempoTxt(c.tempoS.padrao)}" inputmode="numeric" placeholder="2:40"></label>
+          <label class="field"><span class="lbl">Tempo mín. / máx.</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="text" name="sMin" value="${tempoTxt(c.tempoS.min)}" inputmode="numeric"><input type="text" name="sMax" value="${tempoTxt(c.tempoS.max)}" inputmode="numeric"></div></label>
+          <label class="field"><span class="lbl">Moagem (descritor)</span>${sel('grind', DB.grindEscala.map((g) => ({ id: String(g.n), nome: `${g.n} · ${g.nome}` })), String(c.grind))}</label>
+          <label class="field"><span class="lbl">Descrição da moagem</span><input type="text" name="grindDesc" value="${esc(c.grindDesc || '')}"></label>
+          <label class="field"><span class="lbl">Vazão do despejo (g/s)</span><input type="number" name="fluxo" value="${c.fluxo || ''}" step="0.5" inputmode="decimal"><div class="help">Usada pelo timer guiado.</div></label>
+          <label class="field full"><span class="lbl">Receita / observações</span><textarea name="receita" placeholder="como você prepara, filtro usado…">${esc(c.receita || '')}</textarea></label>
+        </div>
+        <div class="row between" style="margin-top:4px"><span class="lbl" style="margin:0">Plano de despejos (para a dose e razão padrão)</span><div class="row" style="gap:6px"><button class="btn sm" type="button" id="plBase">Copiar do base</button><button class="btn sm ghost" type="button" id="plAdd">＋ linha</button></div></div>
+        <div id="plano"></div>
+        <div class="help">Água acumulada na balança ao fim de cada etapa. Ao extrair, o plano escala para a dose e a água que você usar. Sem linhas, herda o plano do método base.</div>
+        <div class="sheet-foot">${isNew ? '' : c.arquivado ? '<button type="button" class="btn" id="reativar">Reativar</button>' : `<button type="button" class="btn danger" id="delMet">${usos ? 'Arquivar' : 'Excluir'}</button>`}<button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">Salvar</button></div>
+      </form>`, (sheet) => {
+      const f = $('#fMet', sheet), F = (n) => f.elements[n];
+      const pintarPlano = (rc) => { $('#plano', sheet).innerHTML = tabelaReceita(rc && rc.etapas.length ? rc : { etapas: [] }, baseM(), true); };
+      pintarPlano(planoAtual());
+      // o plano está em gramas para dose × razão padrão: acompanha quando você muda esses campos
+      const totalForm = () => (+F('dosePadrao').value || 0) * (+F('rPad').value || 0);
+      let totPlano = totalForm();
+      const reescalar = () => {
+        const novo = totalForm(); if (!novo || !totPlano || novo === totPlano) { if (novo) totPlano = novo; return; }
+        const k = novo / totPlano;
+        $$('#plano [name=pa]', sheet).forEach((i) => { if (i.value === '') return; i.value = Math.abs(+i.value - totPlano) < 0.6 ? Math.round(novo) : Math.round(+i.value * k); });
+        totPlano = novo;
+      };
+      ['dosePadrao', 'rPad'].forEach((n) => F(n).addEventListener('input', reescalar));
+      const doBase = () => { const bm = baseM(), d = +F('dosePadrao').value || bm.dosePadrao, rt = +F('rPad').value || bm.ratio.padrao; return E.receita(bm, d, Math.round(d * rt)); };
+      $('#plBase', sheet).onclick = () => pintarPlano(doBase());
+      $('#plAdd', sheet).onclick = () => {
+        let tb = $('#plano tbody', sheet); if (!tb) { pintarPlano(null); tb = $('#plano tbody', sheet); }
+        const tr = document.createElement('tr'); tr.dataset.row = '1';
+        tr.innerHTML = `<td class="n">${tb.children.length + 1}</td><td><input type="text" name="pt" inputmode="numeric" style="width:70px" placeholder="1:30"></td><td><input type="number" name="pa" step="0.1" inputmode="decimal" style="width:80px"></td><td><input type="text" name="pd" placeholder="obs"></td><td><button type="button" class="rm" title="Remover">✕</button></td>`;
+        tb.appendChild(tr);
+      };
+      $('#plano', sheet).addEventListener('click', (e) => { if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); $$('#plano tr[data-row] td.n', sheet).forEach((td, i) => (td.textContent = i + 1)); } });
+      F('base').onchange = () => { // método novo: puxa as faixas e o plano do novo base
+        if (!isNew) return;
+        const bm = baseM();
+        F('dosePadrao').value = bm.dosePadrao; F('rPad').value = bm.ratio.padrao; F('rMin').value = bm.ratio.min; F('rMax').value = bm.ratio.max;
+        F('tPad').value = bm.tempC.padrao; F('tMin').value = bm.tempC.min; F('tMax').value = bm.tempC.max;
+        F('sPad').value = tempoTxt(bm.tempoS.padrao); F('sMin').value = tempoTxt(bm.tempoS.min); F('sMax').value = tempoTxt(bm.tempoS.max);
+        F('grind').value = String(bm.grind); F('grindDesc').value = bm.grindDesc; F('fluxo').value = bm.fluxo || '';
+        const ic = f.querySelector(`[name=ico][value="${bm.ico || bm.id}"]`); if (ic) ic.checked = true;
+        pintarPlano(doBase()); totPlano = totalForm();
+      };
+      const del = $('#delMet', sheet);
+      if (del) del.onclick = () => {
+        if (usos) { if (!confirmar(`Arquivar "${c.nome}"? As ${usos} extração(ões) continuam no diário; o método some da escolha e da nova extração.`)) return; const o = state.metodos.find((x) => x.id === c.id); o.arquivado = true; }
+        else { if (!confirmar(`Excluir "${c.nome}"?`)) return; state.metodos = state.metodos.filter((x) => x.id !== c.id); }
+        save(); closeModal(); toast(usos ? 'Método arquivado' : 'Método excluído'); render();
+      };
+      const reat = $('#reativar', sheet); if (reat) reat.onclick = () => { const o = state.metodos.find((x) => x.id === c.id); delete o.arquivado; save(); closeModal(); toast('Método reativado'); render(); };
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const bm = baseM();
+        const num = (n, d) => (F(n).value === '' ? d : +F(n).value);
+        const tp = (n, d) => { const v = parseTempo(F(n).value); return v == null ? d : v; };
+        const o = {
+          id: c.id || 'u-' + uid(), nome: F('nome').value.trim(), base: bm.id, ico: (f.querySelector('[name=ico]:checked') || {}).value || bm.ico || bm.id,
+          dosePadrao: num('dosePadrao', bm.dosePadrao),
+          ratio: { padrao: num('rPad', bm.ratio.padrao), min: num('rMin', bm.ratio.min), max: num('rMax', bm.ratio.max) },
+          tempC: { padrao: num('tPad', bm.tempC.padrao), min: num('tMin', bm.tempC.min), max: num('tMax', bm.tempC.max) },
+          tempoS: { padrao: tp('sPad', bm.tempoS.padrao), min: tp('sMin', bm.tempoS.min), max: tp('sMax', bm.tempoS.max) },
+          grind: +F('grind').value || bm.grind, grindDesc: F('grindDesc').value.trim() || bm.grindDesc, fluxo: num('fluxo', bm.fluxo),
+          receita: F('receita').value.trim(), criadoEm: c.criadoEm || new Date().toISOString()
+        };
+        if (!o.nome) { toast('Dê um nome ao método.'); return; }
+        if (!(o.dosePadrao > 0) || !(o.ratio.padrao > 0)) { toast('Dose e razão precisam ser maiores que zero.'); return; }
+        if (o.ratio.min > o.ratio.max || o.tempC.min > o.tempC.max || o.tempoS.min > o.tempoS.max) { toast('Confira as faixas: mínimo maior que o máximo.'); return; }
+        o.ratio.padrao = Math.min(o.ratio.max, Math.max(o.ratio.min, o.ratio.padrao));
+        const tot = o.dosePadrao * o.ratio.padrao;
+        const linhas = lerDespejos(sheet).filter((d) => d.acumulado > 0).sort((a, b) => a.t - b.t);
+        o.etapas = linhas.map((d) => ({ t: d.t, agua: Math.min(1, Math.round((d.acumulado / tot) * 1000) / 1000), desc: d.desc }));
+        if (c.arquivado) o.arquivado = true;
+        const i = state.metodos.findIndex((x) => x.id === o.id);
+        if (i >= 0) state.metodos[i] = o; else state.metodos.push(o);
+        save(); closeModal(); toast('Método salvo'); render();
+      });
+    });
+  }
+
   /* ======================= GRÃOS ======================= */
   routes.graos = (view, r) => {
     $('#title').textContent = 'Grãos';
@@ -694,7 +1009,7 @@
           <label class="field"><span class="lbl">Espécie</span>${sel('especie', [{ id: 'arabica', nome: 'Arábica' }, { id: 'canephora', nome: 'Canephora (conilon/robusta)' }, { id: 'blend', nome: 'Blend' }], g.especie)}</label>
           <label class="field"><span class="lbl">Data da torra</span><input type="date" name="dataTorra" value="${esc(g.dataTorra || '')}"></label>
           <label class="field"><span class="lbl">Altitude (m)</span><input type="number" name="altitude" value="${esc(g.altitude || '')}" inputmode="numeric"></label>
-          <label class="field"><span class="lbl">Dose padrão (g, opcional)</span><input type="number" name="dosePadrao" value="${esc(g.dosePadrao || '')}" inputmode="decimal" step="0.1"></label>
+          <label class="field"><span class="lbl">Dose padrão fora do espresso (g, opcional)</span><input type="number" name="dosePadrao" value="${esc(g.dosePadrao || '')}" inputmode="decimal" step="0.1"></label>
           <label class="field"><span class="lbl">Peso do pacote (g)</span><input type="number" name="pesoPacote" value="${esc(g.pesoPacote || '')}" inputmode="numeric" placeholder="ex.: 250"></label>
           <label class="field"><span class="lbl">Já usado antes do app (g)</span><input type="number" name="usadoAntes" value="${esc(g.usadoAntes || '')}" inputmode="numeric" placeholder="0"></label>
           <label class="field"><span class="lbl">Pontuação (SCA)</span><input type="text" name="pontuacao" value="${esc(g.pontuacao || '')}" placeholder="ex.: 86+"></label>
@@ -819,7 +1134,7 @@
 
       <div class="section-title"><h2>Pontos de partida por método</h2></div>
       <div class="tbl-wrap"><table class="tbl tbl-stack"><thead><tr><th>Método</th><th>Razão</th><th>Temp.</th><th>Moagem</th><th>Tempo</th></tr></thead><tbody>
-        ${DB.metodos.map((m) => { const md = state.moedores[0]; const sp = E.startingPoint(g, m, md); return `<tr><td>${m.icone} ${esc(m.nome)}${reg.metodos.includes(m.id) ? ' <span class="badge ok">indicado</span>' : ''}</td><td>1:${sp.ratio}</td><td>${sp.tempC} °C</td><td>${sp.clicks != null ? E.fmtClicks(sp.clicks) + ' cl' : m.grindDesc}</td><td>${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</td></tr>`; }).join('')}
+        ${metodosVisiveis().map((m) => { const md = state.moedores[0]; const sp = E.startingPoint(g, m, md); return `<tr><td><span>${m.icone} ${esc(m.nome)}${reg.metodos.includes(m.id) || reg.metodos.includes(E.baseId(m)) ? ' <span class="badge ok">indicado</span>' : ''}</span></td><td>1:${sp.ratio}</td><td>${sp.tempC} °C</td><td>${sp.clicks != null ? E.fmtClicks(sp.clicks) + ' cl' : m.grindDesc}</td><td>${E.fmtTempo(m.tempoS.min)}–${E.fmtTempo(m.tempoS.max)}</td></tr>`; }).join('')}
       </tbody></table></div>
       ${state.moedores.length ? `<small class="muted">Cliques calculados para ${esc(state.moedores[0].nome)}.</small>` : '<small class="muted">Cadastre um moedor para ver cliques.</small>'}
       <div class="row" style="margin-top:16px"><button class="btn sm" id="arq">${g.arquivado ? 'Reativar grão' : 'Arquivar grão'}</button></div>`;
@@ -870,7 +1185,7 @@
   routes.mais = (view) => {
     $('#title').textContent = 'Mais';
     view.innerHTML = `<div class="list">
-      <div class="item" onclick="location.hash='#/moedores'"><div class="ico">⚙️</div><div><div class="t">Moedores</div><div class="s">${state.moedores.length} cadastrado(s) · escalas de cliques e referências</div></div><div>›</div></div>
+      <div class="item" onclick="location.hash='#/equipamentos'"><div class="ico m">${ICO('kalita')}</div><div><div class="t">Equipamentos</div><div class="s">${DB.metodos.length} métodos (${state.metodos.length} personalizado${state.metodos.length === 1 ? '' : 's'}) · ${state.moedores.length} moedor(es)</div></div><div>›</div></div>
       <div class="item" onclick="location.hash='#/biblioteca'"><div class="ico">📚</div><div><div class="t">Biblioteca de terroirs</div><div class="s">Regiões, processos, torras, métodos e indicações</div></div><div>›</div></div>
       ${hooks.mais.map((fn) => fn()).join('')}
       <div class="item" onclick="location.hash='#/ajustes'"><div class="ico">💾</div><div><div class="t">Backup e ajustes</div><div class="s">Exportar/importar dados, instalar no celular</div></div><div>›</div></div>
@@ -903,7 +1218,7 @@
           <label class="field full"><span class="lbl">Observações / como contar os cliques</span><textarea name="obs">${esc(m.obs || '')}</textarea></label>
         </div>
         <div class="lbl">Referências por método (cliques)</div>
-        <div class="form-grid">${DB.metodos.map((x) => `<label class="field"><span class="lbl">${x.icone} ${esc(x.nome.split(' (')[0])}</span><input type="number" name="ref_${x.id}" value="${m.refs && m.refs[x.id] != null ? m.refs[x.id] : ''}" step="any" inputmode="decimal" placeholder="—"></label>`).join('')}</div>
+        <div class="form-grid">${DB.metodos.filter((x) => !x.arquivado).map((x) => `<label class="field"><span class="lbl">${x.icone} ${esc(nomeCurto(x))}</span><input type="number" name="ref_${x.id}" value="${m.refs && m.refs[x.id] != null ? m.refs[x.id] : ''}" step="any" inputmode="decimal" placeholder="${x.base && metodo(x.base) ? 'usa ' + esc(nomeCurto(metodo(x.base))) : '—'}"></label>`).join('')}</div>
         <div class="sheet-foot">${isNew ? '' : '<button type="button" class="btn danger" id="delMo">Excluir</button>'}<button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">Salvar</button></div>
       </form>`, (sheet) => {
       const f = $('#fMo', sheet), F = (n) => f.elements[n];
@@ -911,7 +1226,7 @@
       const del = $('#delMo', sheet); if (del) del.onclick = () => { if (confirmar('Excluir moedor? As extrações continuam, mas sem referência de cliques.')) { state.moedores = state.moedores.filter((x) => x.id !== m.id); save(); closeModal(); render(); } };
       f.addEventListener('submit', (e) => {
         e.preventDefault();
-        const refs = {}; DB.metodos.forEach((x) => { const v = F('ref_' + x.id).value; if (v !== '') refs[x.id] = +v; });
+        const refs = Object.assign({}, m.refs); DB.metodos.forEach((x) => { const el = F('ref_' + x.id); if (!el) return; if (el.value !== '') refs[x.id] = +el.value; else delete refs[x.id]; });
         const o = { ...m, id: m.id || uid(), nome: F('nome').value.trim(), tipo: F('tipo').value, direcao: F('direcao').value, min: +F('min').value, max: +F('max').value, passo: +F('passo').value || 1, passoAjuste: F('passoAjuste').value ? +F('passoAjuste').value : null, refs, obs: F('obs').value.trim() };
         if (o.max <= o.min) { toast('Máximo deve ser maior que o mínimo.'); return; }
         if (isNew) state.moedores.push(o); else Object.assign(m, o);
@@ -941,11 +1256,11 @@
     if (tab === 'torras') body = DB.torras.filter((x) => match(x.nome + x.sensorial)).map((x) => `<details class="lib"><summary>${esc(x.nome)} <span class="badge">Agtron ${esc(x.agtron)}</span></summary><div class="body"><p>${esc(x.cor)}</p><p><strong>Sensorial:</strong> ${esc(x.sensorial)}</p><p><strong>Base:</strong> filtrado ${x.base.filtroTempC} °C · 1:${x.base.ratioFiltro} — espresso ${x.base.espressoTempC} °C · 1:${x.base.ratioEspresso}</p><p><strong>Descanso pós-torra:</strong> filtrado ${x.descansoDias.filtrado.join('–')} dias · espresso ${x.descansoDias.espresso.join('–')} dias</p><p>💡 ${esc(x.dica)}</p></div></details>`).join('');
     if (tab === 'metodos') body = DB.metodos.filter((x) => match(x.nome + x.tipo)).map((x) => `<details class="lib"><summary>${x.icone} ${esc(x.nome)} <span class="badge">${esc(x.tipo)}</span></summary><div class="body">
       <p><strong>Razão:</strong> 1:${x.ratio.min}–1:${x.ratio.max} (padrão 1:${x.ratio.padrao}) · <strong>Dose:</strong> ${x.dosePadrao} g</p>
-      <p><strong>Temperatura:</strong> ${x.tempC.min}–${x.tempC.max} °C · <strong>Tempo:</strong> ${E.fmtTempo(x.tempoS.min)}–${E.fmtTempo(x.tempoS.max)}</p>
+      <p><strong>Temperatura:</strong> ${x.tempC.min}–${x.tempC.max} °C · <strong>Tempo:</strong> ${E.fmtTempo(x.tempoS.min)}–${E.fmtTempo(x.tempoS.max)}${E.tipoMetodo(x) === 'filtro' ? ` (para ${x.dosePadrao} g; escala com a dose)` : ''}</p>
       <p><strong>Moagem:</strong> ${esc(x.grindDesc)} (~${x.microns[0]}–${x.microns[1]} µm)</p>
       <p><strong>Sensibilidade:</strong> ${esc(x.sensibilidade)}</p><p><strong>Receita base:</strong> ${esc(x.receita)}</p></div></details>`).join('');
-    if (tab === 'receitas') body = DB.metodos.filter((x) => DB.receitas[x.id] && match(x.nome)).map((x) => { const rc = E.receita(x, x.dosePadrao, Math.round(x.dosePadrao * x.ratio.padrao)); return `<details class="lib"><summary>${x.icone} ${esc(x.nome)} <span class="badge">${x.dosePadrao} g / ${rc.total} g</span></summary><div class="body"><p><strong>${esc(rc.nome)}</strong> · ${x.tempC.padrao} °C · moagem ${esc(x.grindDesc)}</p>${tabelaReceita(rc, x, false)}<p style="margin-top:8px">💡 ${esc(x.sensibilidade)}</p></div></details>`; }).join('');
-    if (tab === 'indicacoes') body = `<div class="tbl-wrap"><table class="tbl tbl-stack"><thead><tr><th>Perfil do grão</th><th>Métodos</th><th>Razão</th><th>Temp.</th><th>Torra</th></tr></thead><tbody>${DB.indicacoesPerfil.filter((x) => match(x.perfil)).map((x) => `<tr><td>${esc(x.perfil)}</td><td>${x.metodos.map((m) => metodo(m).icone + ' ' + metodo(m).nome.split(' (')[0]).join('<br>')}</td><td>${esc(x.razao)}</td><td>${esc(x.tempC)}</td><td>${esc(x.torra)}</td></tr>`).join('')}</tbody></table></div>
+    if (tab === 'receitas') body = DB.metodos.filter((x) => E.receita(x, x.dosePadrao) && match(x.nome)).map((x) => { const rc = E.receita(x, x.dosePadrao, E.isEspresso(x) ? Math.round(x.dosePadrao * x.ratio.padrao * 10) / 10 : Math.round(x.dosePadrao * x.ratio.padrao)); return `<details class="lib"><summary>${x.icone} ${esc(x.nome)} <span class="badge">${x.dosePadrao} g / ${rc.total} g</span></summary><div class="body"><p><strong>${esc(rc.nome)}</strong> · ${x.tempC.padrao} °C · moagem ${esc(x.grindDesc)}</p>${tabelaReceita(rc, x, false)}<p style="margin-top:8px">💡 ${esc(x.sensibilidade)}</p></div></details>`; }).join('');
+    if (tab === 'indicacoes') body = `<div class="tbl-wrap"><table class="tbl tbl-stack"><thead><tr><th>Perfil do grão</th><th>Métodos</th><th>Razão</th><th>Temp.</th><th>Torra</th></tr></thead><tbody>${DB.indicacoesPerfil.filter((x) => match(x.perfil)).map((x) => `<tr><td>${esc(x.perfil)}</td><td><span>${x.metodos.map((m) => metodo(m).icone + ' ' + metodo(m).nome.split(' (')[0]).join('<br>')}</span></td><td>${esc(x.razao)}</td><td>${esc(x.tempC)}</td><td>${esc(x.torra)}</td></tr>`).join('')}</tbody></table></div>
       <div class="card soft" style="margin-top:12px"><h3>Escala de moagem</h3><table class="tbl">${DB.grindEscala.map((g) => `<tr><td>${g.n}</td><td><strong>${g.nome}</strong></td><td>${esc(g.ex)}</td></tr>`).join('')}</table></div>`;
     view.innerHTML = `<input class="search" type="text" id="q" placeholder="Buscar…" value="${esc(r.q.q || '')}">
       <div class="tabs">${tabs.map(([id, n]) => `<button class="tab ${id === tab ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div>
@@ -982,7 +1297,7 @@
       <p class="muted" style="margin-top:16px"><small>Laboratório de Cafeteria · dados locais, com sincronização opcional e criptografada.</small></p>`;
     $('#exp').onclick = () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `cafelab-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove(); };
     $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(state)); toast('Copiado'); } catch (e) { toast('Não foi possível copiar'); } };
-    const importar = (txt) => { try { const s = JSON.parse(txt); if (!s || !Array.isArray(s.graos) || !Array.isArray(s.extracoes)) throw new Error('formato'); if (!confirmar(`Importar ${s.graos.length} grão(s), ${(s.moedores || []).length} moedor(es) e ${s.extracoes.length} extração(ões)? Isso substitui os dados atuais.`)) return; state = { graos: s.graos, moedores: s.moedores || [], extracoes: s.extracoes, config: s.config || state.config }; save(); applyTheme(); toast('Backup importado'); go('#/inicio'); } catch (e) { toast('Arquivo inválido'); } };
+    const importar = (txt) => { try { const s = JSON.parse(txt); if (!s || !Array.isArray(s.graos) || !Array.isArray(s.extracoes)) throw new Error('formato'); if (!confirmar(`Importar ${s.graos.length} grão(s), ${(s.moedores || []).length} moedor(es) e ${s.extracoes.length} extração(ões)? Isso substitui os dados atuais.`)) return; state = { graos: s.graos, moedores: s.moedores || [], extracoes: s.extracoes, metodos: s.metodos || [], cafeina: s.cafeina || state.cafeina || [], latte: s.latte || state.latte || [], config: s.config || state.config }; save(); applyTheme(); toast('Backup importado'); go('#/inicio'); } catch (e) { toast('Arquivo inválido'); } };
     $('#imp').onchange = (e) => { const fl = e.target.files[0]; if (!fl) return; const rd = new FileReader(); rd.onload = () => importar(rd.result); rd.readAsText(fl); };
     $('#impTxt').onclick = () => importar($('#paste').value);
     $('#alvo').onchange = (e) => { state.config.notaAlvo = +e.target.value || 8; save(); toast('Salvo'); };
@@ -993,7 +1308,7 @@
     if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('versao');
     $('#reimport').onclick = () => { const r = seedCatalogo(true); toast(`Importados: ${r.graos} grão(s), ${r.moedores} moedor(es)`); };
     $('#demo').onclick = () => { if (state.extracoes.length && !confirmar('Adicionar dados de exemplo aos dados atuais?')) return; carregarDemo(); toast('Exemplo carregado'); go('#/inicio'); };
-    $('#wipe').onclick = () => { if (confirmar('Apagar TODOS os dados deste aparelho? Não há como desfazer.')) { localStorage.removeItem(KEY); state = load(); toast('Dados apagados'); go('#/inicio'); } };
+    $('#wipe').onclick = () => { if (confirmar('Apagar TODOS os dados deste aparelho? Não há como desfazer.')) { localStorage.removeItem(KEY); state = load(); registrarMetodos(); toast('Dados apagados'); go('#/inicio'); } };
   };
 
   function carregarDemo() {

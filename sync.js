@@ -14,7 +14,7 @@
   const lab = window.CafeLab, DB = window.CAFE_DB;
   const K = { token: 'cafelab.sync.token', senha: 'cafelab.sync.senha', gist: 'cafelab.sync.gist', base: 'cafelab.sync.base', disp: 'cafelab.sync.dispositivo', ult: 'cafelab.sync.ultimo' };
   const ARQ = 'cafelab-sync.json', DESC = 'Laboratório de Cafeteria – sincronização (criptografado)';
-  const COLECOES = ['graos', 'moedores', 'extracoes', 'cafeina', 'latte'];
+  const COLECOES = ['graos', 'moedores', 'extracoes', 'metodos', 'cafeina', 'latte'];
   const CONFIG_LOCAL = ['tema', 'catalogoVersao', 'moedoresVersao', 'estoqueMigrado', '_mod'];
   const ITER = 310000;
 

@@ -292,7 +292,10 @@ window.CAFE_DB = (function () {
   /* ---------- Métodos de preparo ----------
    * grind: descritor 1 (extrafina) … 7 (extragrossa) — usado para mapear
    * para cliques do moedor. microns: faixa de referência. ratio: gramas
-   * de água por grama de café (espresso: bebida/dose). */
+   * de água por grama de café (espresso: bebida/dose). Dose de partida:
+   * 10 g (espresso 18 g). tempoS dos filtrados vale para 10 g; o motor
+   * escala a faixa conforme a dose (faixaTempo). base = método cujo
+   * comportamento este herda no motor (diagnóstico, referências de moedor). */
   const metodos = [
     {
       id: 'espresso', nome: 'Espresso', tipo: 'pressão', icone: '☕', fluxo: 2,
@@ -304,7 +307,7 @@ window.CAFE_DB = (function () {
     },
     {
       id: 'moka', nome: 'Moka (cafeteira italiana)', tipo: 'pressão', icone: '🫖', fluxo: 3,
-      ratio: { min: 8, max: 11, padrao: 9.5 }, dosePadrao: 15,
+      ratio: { min: 8, max: 11, padrao: 9.5 }, dosePadrao: 10,
       tempC: { min: 85, max: 95, padrao: 90 }, tempoS: { min: 60, max: 150, padrao: 100 },
       grind: 2, microns: [350, 500], grindDesc: 'Fina-média (sal fino)',
       sensibilidade: 'Média: moagem fina demais entope e amarga; grossa demais fica aguada.',
@@ -312,75 +315,83 @@ window.CAFE_DB = (function () {
     },
     {
       id: 'v60', nome: 'Hario V60', tipo: 'filtrado', icone: '🔻', fluxo: 6,
-      ratio: { min: 14, max: 18, padrao: 16 }, dosePadrao: 15,
-      tempC: { min: 88, max: 97, padrao: 93 }, tempoS: { min: 150, max: 220, padrao: 180 },
+      ratio: { min: 14, max: 18, padrao: 16 }, dosePadrao: 10,
+      tempC: { min: 88, max: 97, padrao: 93 }, tempoS: { min: 130, max: 185, padrao: 155 },
       grind: 3, microns: [600, 800], grindDesc: 'Média-fina (areia grossa)',
       sensibilidade: 'Média-alta: 2–3 cliques (moedor manual) mudam ~15–20 s de drenagem.',
-      receita: '15 g / 240 g. Bloom 45 g por 40 s, 2–3 despejos até 240 g. Drenagem total em 2:45–3:15.'
+      receita: '10 g / 160 g. Bloom 30 g por ~40 s e 3 despejos até 160 g. Com dose pequena o leito é baixo: se drenar antes da faixa, afine um ajuste.'
     },
     {
       id: 'kalita', nome: 'Kalita Wave', tipo: 'filtrado', icone: '〰️', fluxo: 5,
-      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 18,
-      tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 180, max: 240, padrao: 205 },
+      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 10,
+      tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 140, max: 190, padrao: 160 },
       grind: 4, microns: [700, 900], grindDesc: 'Média (areia)',
       sensibilidade: 'Média: fundo plano perdoa variações de despejo; o ajuste vem mais da moagem.',
-      receita: '18 g / 280 g. Bloom 50 g/35 s, despejos em pulsos de 50–60 g. 3:15–3:45.'
+      receita: '10 g / 155 g. Bloom 30 g, depois pulsos de ~30 g mantendo o nível constante.'
+    },
+    {
+      id: 'b75', nome: 'Timemore Crystal Eye B75', curto: 'Crystal Eye B75', tipo: 'filtrado', icone: '', fluxo: 5, base: 'kalita',
+      ratio: { min: 14, max: 17, padrao: 16 }, dosePadrao: 10,
+      tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 135, max: 185, padrao: 160 },
+      grind: 4, microns: [650, 850], grindDesc: 'Média (entre V60 e Kalita)',
+      sensibilidade: 'Média: fundo plano (flat bottom) com saída controlada perdoa variações de despejo; o ajuste fino vem da moagem. Sem referência própria no moedor, parte da referência da Kalita.',
+      receita: '10 g / 160 g. Bloom 30 g por ~35 s, 3 pulsos até 160 g. O fundo plano mantém o leito nivelado: se drenar rápido, afine um ajuste.'
     },
     {
       id: 'melitta', nome: 'Melitta (1x2 / 1x4 / 102)', tipo: 'filtrado', icone: '🧺', fluxo: 4,
-      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 20,
-      tempC: { min: 88, max: 95, padrao: 92 }, tempoS: { min: 180, max: 260, padrao: 220 },
+      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 10,
+      tempC: { min: 88, max: 95, padrao: 92 }, tempoS: { min: 135, max: 195, padrao: 165 },
       grind: 4, microns: [700, 950], grindDesc: 'Média (areia)',
       sensibilidade: 'Média-baixa: fluxo restrito pelo orifício único; moagem fina demais alaga o filtro.',
-      receita: '20 g / 310 g. Bloom 60 g/40 s, despejos contínuos suaves. 3:30–4:15.'
+      receita: '10 g / 155 g. Bloom 30 g, depois despejos contínuos e suaves.'
     },
     {
       id: 'chemex', nome: 'Chemex', tipo: 'filtrado', icone: '⏳', fluxo: 7,
-      ratio: { min: 14, max: 17, padrao: 16 }, dosePadrao: 30,
-      tempC: { min: 90, max: 97, padrao: 94 }, tempoS: { min: 210, max: 300, padrao: 250 },
+      ratio: { min: 14, max: 17, padrao: 16 }, dosePadrao: 10,
+      tempC: { min: 90, max: 97, padrao: 94 }, tempoS: { min: 135, max: 195, padrao: 160 },
       grind: 5, microns: [800, 1000], grindDesc: 'Média-grossa',
-      sensibilidade: 'Média: filtro espesso; ajustes de 3–4 cliques por vez em moedores manuais.',
-      receita: '30 g / 500 g. Bloom 80 g/45 s, despejos em espiral até 500 g. 4:00–5:00.'
+      sensibilidade: 'Média: filtro espesso; ajustes de 3–4 cliques por vez em moedores manuais. Com 10 g o leito fica raso: moa um pouco mais fino que o habitual.',
+      receita: '10 g / 160 g. Bloom 25 g por ~40 s, despejos em espiral até 160 g.'
     },
     {
       id: 'clever', nome: 'Clever Dripper (imersão + filtro)', tipo: 'imersão', icone: '🪣', fluxo: 10,
-      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 18,
+      ratio: { min: 14, max: 17, padrao: 15.5 }, dosePadrao: 10,
       tempC: { min: 88, max: 96, padrao: 93 }, tempoS: { min: 180, max: 300, padrao: 240 },
       grind: 4, microns: [700, 900], grindDesc: 'Média',
       sensibilidade: 'Baixa: tempo é controlado por você; moagem afeta mais corpo do que tempo.',
-      receita: '18 g / 280 g. Água antes do café, mexa, tampe, 2:30–3:30, drene sobre a xícara (~1 min).'
+      receita: '10 g / 155 g. Água antes do café, mexa, tampe, 2:30–3:30, drene sobre a xícara (~1 min).'
     },
     {
       id: 'aeropress', nome: 'AeroPress', tipo: 'imersão', icone: '🧪', fluxo: 10,
-      ratio: { min: 11, max: 17, padrao: 14 }, dosePadrao: 15,
+      ratio: { min: 11, max: 17, padrao: 14 }, dosePadrao: 10,
       tempC: { min: 80, max: 95, padrao: 90 }, tempoS: { min: 75, max: 180, padrao: 120 },
       grind: 3, microns: [500, 750], grindDesc: 'Média-fina',
       sensibilidade: 'Média: pressão compensa moagem; tempo de imersão e temperatura são alavancas fortes.',
-      receita: '15 g / 210 g invertido ou padrão. Mexa 10 s, 1:30 de imersão, pressione em 30 s.'
+      receita: '10 g / 140 g, invertido ou padrão. Mexa 10 s, 1:30 de imersão, pressione em 30 s.'
     },
     {
       id: 'prensa-francesa', nome: 'Prensa Francesa', tipo: 'imersão', icone: '🫙', fluxo: 12,
-      ratio: { min: 12, max: 16, padrao: 14 }, dosePadrao: 30,
+      ratio: { min: 12, max: 16, padrao: 14 }, dosePadrao: 10,
       tempC: { min: 88, max: 95, padrao: 92 }, tempoS: { min: 240, max: 480, padrao: 300 },
       grind: 6, microns: [900, 1200], grindDesc: 'Grossa (sal grosso)',
       sensibilidade: 'Baixa para tempo, alta para sedimento/adstringência: moa mais grosso se ficar lamacenta.',
-      receita: '30 g / 450 g. 4 min, quebre a crosta, retire a espuma, aguarde mais 4–5 min e pressione só até a superfície.'
+      receita: '10 g / 140 g. 4 min, quebre a crosta, retire a espuma, aguarde mais 4–5 min e pressione só até a superfície.'
     },
     {
       id: 'coador-pano', nome: 'Coador de pano', tipo: 'filtrado', icone: '🧦', fluxo: 5,
-      ratio: { min: 13, max: 16, padrao: 14.5 }, dosePadrao: 25,
-      tempC: { min: 86, max: 93, padrao: 90 }, tempoS: { min: 150, max: 240, padrao: 190 },
+      ratio: { min: 13, max: 16, padrao: 14.5 }, dosePadrao: 10,
+      tempC: { min: 86, max: 93, padrao: 90 }, tempoS: { min: 105, max: 165, padrao: 130 },
       grind: 4, microns: [700, 900], grindDesc: 'Média',
       sensibilidade: 'Baixa-média: o pano passa mais óleos; corpo alto mesmo com moagem média.',
-      receita: '25 g / 360 g. Escalde o pano, bloom 60 g/30 s, despejos contínuos. Enxágue o pano sem sabão e guarde úmido na geladeira.'
+      receita: '10 g / 145 g. Escalde o pano, bloom 25 g/30 s, despejos contínuos. Enxágue o pano sem sabão e guarde úmido na geladeira.'
     },
     {
       id: 'cold-brew', nome: 'Cold brew', tipo: 'imersão', icone: '🧊', fluxo: 20,
-      ratio: { min: 6, max: 12, padrao: 9 }, dosePadrao: 100,
+      ratio: { min: 6, max: 12, padrao: 9 }, dosePadrao: 10,
       tempC: { min: 4, max: 25, padrao: 20 }, tempoS: { min: 28800, max: 72000, padrao: 50400 },
       grind: 6, microns: [900, 1200], grindDesc: 'Grossa',
       sensibilidade: 'Muito baixa: ajuste principalmente tempo (12–20 h) e razão.',
-      receita: '100 g / 900 g (concentrado). 14–18 h em temperatura ambiente ou 18–24 h na geladeira. Filtre e dilua 1:1.'
+      receita: '10 g / 90 g de concentrado (multiplique para lotes maiores). 14–18 h em temperatura ambiente ou 18–24 h na geladeira. Filtre e dilua 1:1.'
     }
   ];
 
@@ -452,36 +463,43 @@ window.CAFE_DB = (function () {
   const receitas = {
     v60: { nome: 'V60 – 4 despejos (estilo Tetsu/Hoffmann)', etapas: [
       { t: 0, agua: 0.19, desc: 'Bloom: despeje ~3× a dose em círculos, molhando todo o pó. Gire o dripper suavemente.' },
-      { t: 45, agua: 0.50, desc: '2º ataque: espiral do centro para a borda, fluxo constante, até 50 % da água.' },
-      { t: 75, agua: 0.75, desc: '3º ataque: até 75 % da água, mantendo o nível no filtro.' },
-      { t: 105, agua: 1.00, desc: '4º ataque: complete a água. Gire (swirl) para nivelar o leito.' },
-      { t: 165, agua: 1.00, desc: 'Drenagem. Alvo de término 2:45–3:15. Leito plano, sem pó agarrado na parede.' }
+      { t: 40, agua: 0.50, desc: '2º ataque: espiral do centro para a borda, fluxo constante, até 50 % da água.' },
+      { t: 65, agua: 0.75, desc: '3º ataque: até 75 % da água, mantendo o nível no filtro.' },
+      { t: 90, agua: 1.00, desc: '4º ataque: complete a água. Gire (swirl) para nivelar o leito.' },
+      { t: 140, agua: 1.00, desc: 'Drenagem. Leito plano, sem pó agarrado na parede.' }
     ] },
     kalita: { nome: 'Kalita Wave – pulsos', etapas: [
-      { t: 0, agua: 0.18, desc: 'Bloom com ~3× a dose por 35–40 s; mexa uma vez.' },
-      { t: 40, agua: 0.40, desc: '2º despejo em pulsos curtos no centro, sem tocar a parede do filtro.' },
-      { t: 80, agua: 0.60, desc: '3º despejo, mantendo o nível constante (cerca de 1 cm acima do pó).' },
-      { t: 120, agua: 0.80, desc: '4º despejo.' },
-      { t: 160, agua: 1.00, desc: '5º despejo: complete a água.' },
-      { t: 215, agua: 1.00, desc: 'Drenagem. Alvo 3:15–3:45.' }
+      { t: 0, agua: 0.18, desc: 'Bloom com ~3× a dose; mexa uma vez.' },
+      { t: 30, agua: 0.40, desc: '2º despejo em pulsos curtos no centro, sem tocar a parede do filtro.' },
+      { t: 65, agua: 0.60, desc: '3º despejo, mantendo o nível constante (cerca de 1 cm acima do pó).' },
+      { t: 95, agua: 0.80, desc: '4º despejo.' },
+      { t: 125, agua: 1.00, desc: '5º despejo: complete a água.' },
+      { t: 170, agua: 1.00, desc: 'Drenagem.' }
+    ] },
+    b75: { nome: 'Crystal Eye B75 – bloom + 3 pulsos', etapas: [
+      { t: 0, agua: 0.19, desc: 'Bloom com ~3× a dose em espiral lenta; gire o dripper para molhar todo o leito.' },
+      { t: 35, agua: 0.50, desc: '2º despejo no centro, em círculos pequenos, sem tocar a parede.' },
+      { t: 60, agua: 0.75, desc: '3º despejo, mantendo o nível da água estável acima do leito.' },
+      { t: 85, agua: 1.00, desc: '4º despejo: complete. Gire suavemente para nivelar o fundo plano.' },
+      { t: 140, agua: 1.00, desc: 'Drenagem. O leito deve terminar reto e uniforme.' }
     ] },
     melitta: { nome: 'Melitta – bloom + despejo contínuo', etapas: [
-      { t: 0, agua: 0.20, desc: 'Bloom com ~3× a dose por 40 s.' },
-      { t: 40, agua: 0.60, desc: 'Despejo contínuo e lento em espiral até 60 %.' },
-      { t: 100, agua: 1.00, desc: 'Complete a água em despejo suave. Não deixe secar entre despejos.' },
-      { t: 230, agua: 1.00, desc: 'Drenagem. Alvo 3:30–4:15.' }
+      { t: 0, agua: 0.20, desc: 'Bloom com ~3× a dose.' },
+      { t: 35, agua: 0.60, desc: 'Despejo contínuo e lento em espiral até 60 %.' },
+      { t: 75, agua: 1.00, desc: 'Complete a água em despejo suave. Não deixe secar entre despejos.' },
+      { t: 175, agua: 1.00, desc: 'Drenagem.' }
     ] },
     'coador-pano': { nome: 'Coador de pano', etapas: [
-      { t: 0, agua: 0.20, desc: 'Escalde o pano antes. Bloom com ~2,5× a dose por 30 s.' },
+      { t: 0, agua: 0.20, desc: 'Escalde o pano antes. Bloom com ~2,5× a dose.' },
       { t: 30, agua: 0.60, desc: 'Despejo contínuo em espiral até 60 %.' },
-      { t: 90, agua: 1.00, desc: 'Complete a água mantendo o pó submerso.' },
-      { t: 190, agua: 1.00, desc: 'Drenagem. Alvo 2:30–3:30.' }
+      { t: 65, agua: 1.00, desc: 'Complete a água mantendo o pó submerso.' },
+      { t: 130, agua: 1.00, desc: 'Drenagem.' }
     ] },
     chemex: { nome: 'Chemex – 3 ataques', etapas: [
-      { t: 0, agua: 0.16, desc: 'Bloom por 45 s com ~2,5× a dose. Mexa com colher para molhar tudo.' },
-      { t: 45, agua: 0.55, desc: '2º ataque em espiral, mantendo o filtro cheio até ~2 cm da borda.' },
-      { t: 120, agua: 1.00, desc: '3º ataque: complete a água.' },
-      { t: 250, agua: 1.00, desc: 'Drenagem. Alvo 4:00–5:00.' }
+      { t: 0, agua: 0.16, desc: 'Bloom com ~2,5× a dose. Mexa com colher para molhar tudo.' },
+      { t: 40, agua: 0.55, desc: '2º ataque em espiral, mantendo o filtro cheio até ~2 cm da borda.' },
+      { t: 80, agua: 1.00, desc: '3º ataque: complete a água.' },
+      { t: 160, agua: 1.00, desc: 'Drenagem.' }
     ] },
     clever: { nome: 'Clever – imersão', etapas: [
       { t: 0, agua: 1.00, desc: 'Água primeiro, café depois (ou vice-versa). Mexa 3 voltas e tampe.' },
