@@ -423,6 +423,9 @@ window.CAFE_DB = (function () {
     { id: '1zpresso-jx-pro', nome: '1Zpresso JX-Pro', tipo: 'manual', min: 0, max: 200, passo: 1, direcao: 'menor=fino', umPorClique: 12.5,
       obs: '40 cliques por volta, 12,5 µm por clique. Registre em cliques totais a partir do zero (2 voltas e 10 cliques = 90). Referências calibradas pelo uso real: espresso 60–80, coados 110–150.',
       refs: { espresso: 70, moka: 90, aeropress: 105, v60: 120, kalita: 130, melitta: 135, 'coador-pano': 130, clever: 130, chemex: 145, 'prensa-francesa': 165, 'cold-brew': 175 } },
+    { id: 'tramontina-breville-express', nome: 'Tramontina by Breville Express', tipo: 'elétrico', min: 1, max: 60, passo: 1, direcao: 'menor=fino', passoAjuste: 2,
+      obs: 'Escala de 1 a 60 (menor = mais fino). Faixas do fabricante: espresso 3–12 (farinha de rosca / açúcar de confeiteiro), moka 13–20 (areia fina), cônicos V60/Koar 21–30 (sal fino / areia comum), Melitta/elétrica 25–35 (areia de praia), Chemex/Clever 35–45 (açúcar cristal), prensa 46–55 (sal grosso / trigo para quibe), cold brew 56–60 (pimenta-do-reino grossa).',
+      refs: { espresso: 8, moka: 16, aeropress: 22, v60: 25, kalita: 28, melitta: 30, 'coador-pano': 30, clever: 40, chemex: 40, 'prensa-francesa': 50, 'cold-brew': 58 } },
     { nome: 'Genérico (0–40)', tipo: 'manual', min: 0, max: 40, passo: 1, refs: { espresso: 6, moka: 10, aeropress: 15, v60: 18, kalita: 20, melitta: 20, 'coador-pano': 20, clever: 20, chemex: 24, 'prensa-francesa': 30, 'cold-brew': 34 } }
   ];
 

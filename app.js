@@ -59,6 +59,11 @@
       DB.moedoresModelo.filter((mm) => mm.id && mm.umPorClique).forEach((mm) => { const m = state.moedores.find((x) => x.modeloId === mm.id); if (m && !m.umPorClique) m.umPorClique = mm.umPorClique; });
       state.config.moedoresVersao = 5; save();
     }
+    if ((state.config.moedoresVersao || 0) < 6) { // Tramontina by Breville Express (referências por cliques do fabricante)
+      const mm = DB.moedoresModelo.find((x) => x.id === 'tramontina-breville-express');
+      if (!state.moedores.some((x) => x.modeloId === mm.id)) state.moedores.push({ id: uid(), modeloId: mm.id, nome: mm.nome, tipo: mm.tipo, min: mm.min, max: mm.max, passo: mm.passo, direcao: mm.direcao, passoAjuste: mm.passoAjuste, refs: { ...mm.refs }, obs: mm.obs });
+      state.config.moedoresVersao = 6; save();
+    }
     if (!state.config.dose10) { // receitas de partida refeitas com 10 g (espresso 18 g); extrações registradas não mudam
       state.graos.forEach((g) => { if (g.dosePadrao != null) g.dosePadrao = null; });
       state.config.dose10 = true; save();
@@ -1222,7 +1227,7 @@
         <div class="sheet-foot">${isNew ? '' : '<button type="button" class="btn danger" id="delMo">Excluir</button>'}<button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">Salvar</button></div>
       </form>`, (sheet) => {
       const f = $('#fMo', sheet), F = (n) => f.elements[n];
-      $('#modelo', sheet).onchange = (e) => { const mm = DB.moedoresModelo[+e.target.value]; if (!mm) return; if (!F('nome').value) F('nome').value = mm.nome.split(' (')[0]; F('tipo').value = mm.tipo; F('min').value = mm.min; F('max').value = mm.max; F('passo').value = mm.passo; if (mm.direcao) F('direcao').value = mm.direcao; if (mm.obs) F('obs').value = mm.obs; DB.metodos.forEach((x) => (F('ref_' + x.id).value = mm.refs[x.id] != null ? mm.refs[x.id] : '')); };
+      $('#modelo', sheet).onchange = (e) => { const mm = DB.moedoresModelo[+e.target.value]; if (!mm) return; if (!F('nome').value) F('nome').value = mm.nome.split(' (')[0]; F('tipo').value = mm.tipo; F('min').value = mm.min; F('max').value = mm.max; F('passo').value = mm.passo; if (mm.direcao) F('direcao').value = mm.direcao; if (mm.obs) F('obs').value = mm.obs; F('passoAjuste').value = mm.passoAjuste || ''; DB.metodos.forEach((x) => (F('ref_' + x.id).value = mm.refs[x.id] != null ? mm.refs[x.id] : '')); };
       const del = $('#delMo', sheet); if (del) del.onclick = () => { if (confirmar('Excluir moedor? As extrações continuam, mas sem referência de cliques.')) { state.moedores = state.moedores.filter((x) => x.id !== m.id); save(); closeModal(); render(); } };
       f.addEventListener('submit', (e) => {
         e.preventDefault();
