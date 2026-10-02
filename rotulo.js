@@ -168,7 +168,7 @@ Ids de torra: ${torras}.`;
   /* ---------- Gemini (Google AI Studio, REST) ---------- */
   async function lerComGemini(canvas, progresso) {
     progresso('Enviando foto para o Gemini…');
-    const model = getGemModel();
+    let model = getGemModel();
     const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
     const schema = JSON.parse(JSON.stringify(SCHEMA));
     delete schema.additionalProperties;
@@ -189,22 +189,40 @@ Ids de torra: ${torras}.`;
       const j = await r.json().catch(() => ({}));
       return { r, j };
     };
-    let { r, j } = await chamar(true);
-    // modelos/versões que não aceitam responseJsonSchema: tenta de novo só com JSON no prompt
-    if (r.status === 400 && /responseJsonSchema|response_json_schema|schema/i.test(JSON.stringify(j))) ({ r, j } = await chamar(false));
+    const espera = (ms) => new Promise((res) => setTimeout(res, ms));
+    const tentar = async () => {
+      let { r, j } = await chamar(true);
+      // modelos/versões que não aceitam responseJsonSchema: tenta de novo só com JSON no prompt
+      if (r.status === 400 && /responseJsonSchema|response_json_schema|schema/i.test(JSON.stringify(j))) ({ r, j } = await chamar(false));
+      return { r, j };
+    };
+    // 503 (sobrecarga) e 500 são passageiros: tenta de novo e, se persistir, passa para outro modelo Gemini
+    const passageiro = (r) => r.status === 503 || r.status === 500;
+    let { r, j } = await tentar();
+    for (const espMs of [2000, 5000]) {
+      if (!passageiro(r)) break;
+      progresso('Gemini sobrecarregado, tentando de novo…'); await espera(espMs); ({ r, j } = await tentar());
+    }
+    if (passageiro(r)) {
+      for (const alt of MODELOS_GEMINI.map((m) => m.id).filter((id) => id !== model)) {
+        progresso(`Gemini sobrecarregado, tentando ${alt}…`); model = alt; ({ r, j } = await tentar());
+        if (!passageiro(r)) break;
+      }
+    }
     if (!r.ok) {
       const msg = (j.error && j.error.message) || r.statusText;
       if (r.status === 400 && /API key/i.test(msg)) throw new Error('Chave do Gemini inválida. Confira em Mais → Backup e ajustes.');
       if (r.status === 403) throw new Error('A chave do Gemini não tem acesso a este modelo ou à API. Confira no Google AI Studio.');
       if (r.status === 404) throw new Error(`Modelo "${model}" não encontrado. Escolha outro nos ajustes.`);
       if (r.status === 429) throw new Error('Limite de uso do Gemini atingido. Tente de novo em instantes.');
+      if (passageiro(r)) throw new Error('O Gemini está sobrecarregado agora (erro 503 do Google, passageiro). Tente de novo em alguns minutos ou troque o provedor em Mais → Backup e ajustes.');
       throw new Error(`Erro do Gemini (${r.status}): ${String(msg).slice(0, 200)}`);
     }
     const cand = (j.candidates || [])[0];
     if (!cand) throw new Error('O Gemini não processou esta imagem' + (j.promptFeedback && j.promptFeedback.blockReason ? ` (${j.promptFeedback.blockReason})` : '') + '.');
     if (cand.finishReason && !['STOP', 'MAX_TOKENS'].includes(cand.finishReason)) throw new Error(`O Gemini interrompeu a resposta (${cand.finishReason}). Tente outra foto.`);
     const txt = ((cand.content && cand.content.parts) || []).map((p) => p.text || '').join('');
-    return mapear(txt, 'Gemini', '');
+    return mapear(txt, 'Gemini', model !== getGemModel() ? `Respondido por ${model}, porque o modelo escolhido estava sobrecarregado.` : '');
   }
 
   /* ---------- OCR local ---------- */
