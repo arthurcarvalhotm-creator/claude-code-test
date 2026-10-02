@@ -185,7 +185,7 @@ Ids de torra: ${torras}.`;
         r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getGemKey() }, body: JSON.stringify(corpo(comSchema))
         });
-      } catch (e) { throw new Error('Sem conexão com a API do Gemini. Verifique a internet.'); }
+      } catch (e) { return { r: { ok: false, status: 0, statusText: 'rede' }, j: {} }; } // sem resposta: rede ou erro do Google sem CORS
       const j = await r.json().catch(() => ({}));
       return { r, j };
     };
@@ -197,7 +197,7 @@ Ids de torra: ${torras}.`;
       return { r, j };
     };
     // 503 (sobrecarga) e 500 são passageiros: tenta de novo e, se persistir, passa para outro modelo Gemini
-    const passageiro = (r) => r.status === 503 || r.status === 500;
+    const passageiro = (r) => r.status === 503 || r.status === 500 || r.status === 0;
     let { r, j } = await tentar();
     for (const espMs of [2000, 5000]) {
       if (!passageiro(r)) break;
@@ -215,6 +215,8 @@ Ids de torra: ${torras}.`;
       if (r.status === 403) throw new Error('A chave do Gemini não tem acesso a este modelo ou à API. Confira no Google AI Studio.');
       if (r.status === 404) throw new Error(`Modelo "${model}" não encontrado. Escolha outro nos ajustes.`);
       if (r.status === 429) throw new Error('Limite de uso do Gemini atingido. Tente de novo em instantes.');
+      if (r.status === 0 && navigator.onLine === false) throw new Error('Sem conexão com a internet. Conecte-se e tente de novo.');
+      if (r.status === 0) throw new Error('Não consegui falar com o Gemini depois de várias tentativas. Pode ser instabilidade do Google ou da sua rede (Wi-Fi/dados). Tente de novo em instantes ou troque o provedor em Mais → Backup e ajustes.');
       if (passageiro(r)) throw new Error('O Gemini está sobrecarregado agora (erro 503 do Google, passageiro). Tente de novo em alguns minutos ou troque o provedor em Mais → Backup e ajustes.');
       throw new Error(`Erro do Gemini (${r.status}): ${String(msg).slice(0, 200)}`);
     }
