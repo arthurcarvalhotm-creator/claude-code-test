@@ -17,7 +17,7 @@
     try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.graos) return s; } catch (e) { /* ignore */ }
     return { graos: [], moedores: [], extracoes: [], metodos: [], config: { tema: 'auto', notaAlvo: 8 } };
   }
-  function save() { registrarMetodos(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar (armazenamento cheio ou bloqueado).'); } try { hooks.salvo.forEach((fn) => fn()); } catch (e) { /* módulos ainda não carregados */ } }
+  function save() { registrarMetodos(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Não foi possível salvar: o armazenamento do navegador está cheio. Remova algumas fotos de cafés ou faça backup e limpe dados antigos.'); } try { hooks.salvo.forEach((fn) => fn()); } catch (e) { /* módulos ainda não carregados */ } }
   /* Importa o catálogo nativo (cafés comprados) e os moedores do usuário sem duplicar */
   function seedCatalogo(force) {
     let n = 0, m = 0;
@@ -149,6 +149,19 @@
   function bindChips(root) { if (!root || root._chipsOk) return; root._chipsOk = true; root.addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c && !c.classList.contains('static')) { c.classList.toggle('on'); c.dispatchEvent(new CustomEvent('chipchange', { bubbles: true })); } }); }
   function sel(name, opts, val, attrs) { return `<select name="${name}" ${attrs || ''}>${opts.map((o) => `<option value="${esc(o.id)}" ${o.id === val ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}</select>`; }
   function range(name, lbl, val, min, max, step) { return `<div class="range-row"><span class="lbl">${lbl}</span><input type="range" name="${name}" min="${min}" max="${max}" step="${step || 1}" value="${val}" oninput="this.nextElementSibling.value=this.value"><output>${val}</output></div>`; }
+  /* Controle com − / + para ajuste fino (arrastar continua funcionando) */
+  const fmtVal = (v) => String(v).replace('.', ',');
+  function rangeFino(name, lbl, val, min, max, step, style) {
+    return `<div class="range-row passos"${style ? ` style="${style}"` : ''}><span class="lbl">${lbl}</span><button type="button" class="passo-btn" data-passo="-1" aria-label="Diminuir ${lbl}">−</button><input type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${val}" oninput="this.closest('.range-row').querySelector('output').value=String(this.value).replace('.',',')"><button type="button" class="passo-btn" data-passo="1" aria-label="Aumentar ${lbl}">+</button><output>${fmtVal(val)}</output></div>`;
+  }
+  function setRange(inp, v) { inp.value = v; const o = inp.closest('.range-row').querySelector('output'); if (o) o.value = fmtVal(inp.value); }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.passo-btn'); if (!b) return;
+    const inp = b.closest('.range-row').querySelector('input[type=range]');
+    const st = +inp.step || 1, v = Math.min(+inp.max, Math.max(+inp.min, Math.round((+inp.value + st * +b.dataset.passo) / st) * st));
+    setRange(inp, Math.round(v * 100) / 100);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   function confirmar(msg) { return window.confirm(msg); }
 
   /* ---------------- Receita / despejos ---------------- */
@@ -327,6 +340,28 @@
     return r <= 0 ? '<span class="badge">acabou</span>' : `<span class="badge ${d <= 3 ? 'sobre' : ''}">${d <= 3 ? '⚠ ' : ''}${r} g · ~${d} doses</span>`;
   }
 
+  /* ---------- Foto do café: comprimida (máx. 480 px, JPEG) e guardada no próprio grão ---------- */
+  function fotoDeArquivo(file) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        res(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Não foi possível abrir a foto.')); };
+      img.src = url;
+    });
+  }
+  const fotoOk = (f) => typeof f === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(f);
+  function icoGrao(g) { return g && fotoOk(g.foto) ? `<div class="ico foto"><img src="${g.foto}" alt="" loading="lazy"></div>` : `<div class="ico">${BEAN}</div>`; }
+  function verFoto(src) {
+    const d = document.createElement('div'); d.className = 'foto-zoom'; d.innerHTML = `<img src="${src}" alt="Foto do café">`;
+    d.onclick = () => d.remove(); document.body.appendChild(d);
+  }
+
   function itemExtracao(x) {
     const g = grao(x.graoId), m = metodo(x.metodoId);
     return `<div class="item" onclick="location.hash='#/extracao/${x.id}'">
@@ -428,7 +463,7 @@
     if (!L) return '';
     const seta = (d) => (d >= 1.5 ? '▲▲' : d >= 1 ? '▲' : d <= -1.5 ? '▼▼' : d <= -1 ? '▼' : '✓');
     return `<div class="tbl-wrap" style="margin-top:8px"><table class="tbl perfil"><thead><tr><th></th><th>Esperado</th><th>Você sentiu</th><th></th></tr></thead><tbody>
-      ${E.ATRIBUTOS.map(([k, nome]) => `<tr><td>${nome}</td><td>${E.fmtN(L.esperado[k])}</td><td><strong>${L.percebido[k]}</strong></td><td class="${Math.abs(L.desvio[k]) >= 1 ? 'desvio' : 'ok'}">${seta(L.desvio[k])}</td></tr>`).join('')}
+      ${E.ATRIBUTOS.map(([k, nome]) => `<tr><td>${nome}</td><td>${E.fmtN(L.esperado[k])}</td><td><strong>${E.fmtN(L.percebido[k])}</strong></td><td class="${Math.abs(L.desvio[k]) >= 1 ? 'desvio' : 'ok'}">${seta(L.desvio[k])}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="text-2" style="margin:6px 0 0"><small>Esperado para ${esc(L.esperado.reg.id !== 'outra' ? L.esperado.reg.nome : 'este grão')}${L.esperado.proc ? ' · ' + esc(L.esperado.proc.nome.split(' (')[0].toLowerCase()) : ''} · torra ${esc(L.esperado.torra.nome.toLowerCase())}${L.esperado.notas.length ? ` · notas: ${L.esperado.notas.map(esc).join(', ')}` : ''}${L.notasPercebidas.length ? `<br>Você sentiu: ${L.notasPercebidas.map(esc).join(', ')}` : ''}</small></p>`;
   }
@@ -505,15 +540,15 @@
               <strong>Avalie essa extração</strong>
               <div class="estrelas" id="estrelas">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="estrela" data-n="${n}" aria-label="${n} de 5">★</button>`).join('')}</div>
               <small class="muted" id="avRotulo"></small>
-              <div class="range-row" style="margin:8px 0 0"><span class="lbl">Nota 0–10</span><input type="range" name="nota" min="0" max="10" step="0.5" value="6" oninput="this.nextElementSibling.value=this.value"><output>6</output></div>
             </div>
           </div>
+          ${rangeFino('nota', 'Nota 0–10', 6, 0, 10, 0.5, 'margin:2px 0 12px')}
           <div class="help" id="hPerfil" style="margin:-4px 0 10px"></div>
-          ${range('acidez', 'Acidez', 3, 1, 5)}
-          ${range('docura', 'Doçura', 3, 1, 5)}
-          ${range('amargor', 'Amargor', 3, 1, 5)}
-          ${range('corpo', 'Corpo', 3, 1, 5)}
-          ${range('final', 'Finalização', 3, 1, 5)}
+          ${rangeFino('acidez', 'Acidez', 3, 1, 5, 0.5)}
+          ${rangeFino('docura', 'Doçura', 3, 1, 5, 0.5)}
+          ${rangeFino('amargor', 'Amargor', 3, 1, 5, 0.5)}
+          ${rangeFino('corpo', 'Corpo', 3, 1, 5, 0.5)}
+          ${rangeFino('final', 'Finalização', 3, 1, 5, 0.5)}
           <div class="lbl" style="margin-top:8px">Sinais percebidos</div>
           ${chipsSel('sinais', DB.sinais, [])}
           <div class="lbl" style="margin-top:12px">Descritores</div>
@@ -532,7 +567,7 @@
       $('#avRotulo', f).textContent = `${nv}/5 · ${info.rotulo}`;
       if (window.Mascote) { const fig = $('#avFig', f); if (fig.dataset.h !== info.humor) { fig.dataset.h = info.humor; fig.innerHTML = window.Mascote.svg(info.humor, { size: 104 }); } }
     }
-    $('#estrelas', f).addEventListener('click', (e) => { const b = e.target.closest('.estrela'); if (!b) return; const nota = +b.dataset.n * 2; f.elements.nota.value = nota; f.elements.nota.nextElementSibling.value = nota; pintarAvaliacao(); });
+    $('#estrelas', f).addEventListener('click', (e) => { const b = e.target.closest('.estrela'); if (!b) return; const nota = +b.dataset.n * 2; setRange(f.elements.nota, nota); pintarAvaliacao(); });
     f.elements.nota.addEventListener('input', pintarAvaliacao);
     setTimeout(pintarAvaliacao, 0);
     const F = (n) => f.elements[n];
@@ -544,7 +579,7 @@
       const Ep = E.perfilEsperado(g, m);
       $('#hPerfil').textContent = `Perfil esperado deste grão: acidez ${E.fmtN(Ep.acidez)}, doçura ${E.fmtN(Ep.docura)}, amargor ${E.fmtN(Ep.amargor)}, corpo ${E.fmtN(Ep.corpo)}${Ep.notas.length ? ' · notas: ' + Ep.notas.slice(0, 4).join(', ') : ''}. ${sensTocado ? 'Compare com o que você sentiu.' : 'Os controles começam nele: mova só o que você sentiu diferente.'}`;
       if (sensTocado) return;
-      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { const v = Math.min(5, Math.max(1, Math.round(Ep[k]))); F(k).value = v; F(k).nextElementSibling.value = v; });
+      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { const v = Math.min(5, Math.max(1, Math.round(Ep[k] * 2) / 2)); setRange(F(k), v); });
     }
 
     function ctx() { return { g: grao(F('graoId').value), m: metodo(F('metodoId').value), md: moedor(F('moedorId').value) }; }
@@ -683,8 +718,8 @@
 
     const rec0 = renderSugestao();
     function preencherSensorial(src) {
-      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (src[k]) { F(k).value = src[k]; F(k).nextElementSibling.value = src[k]; } });
-      F('nota').value = src.nota != null && src.nota !== '' ? src.nota : 6; F('nota').nextElementSibling.value = F('nota').value; setTimeout(pintarAvaliacao, 0);
+      ['acidez', 'docura', 'amargor', 'corpo', 'final'].forEach((k) => { if (src[k]) setRange(F(k), src[k]); });
+      setRange(F('nota'), src.nota != null && src.nota !== '' ? src.nota : 6); setTimeout(pintarAvaliacao, 0);
       $$('[data-chips="sinais"] .chip, [data-chips="descritores"] .chip', f).forEach((c) => c.classList.remove('on'));
       (src.sinais || []).forEach((s) => { const c = $(`[data-chips="sinais"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
       (src.descritores || []).forEach((s) => { const c = $(`[data-chips="descritores"] .chip[data-v="${s}"]`, f); if (c) c.classList.add('on'); });
@@ -799,7 +834,7 @@
       const pos = c.apt.motivos.filter((x) => x.v > 0).slice(0, 3), neg = c.apt.motivos.filter((x) => x.v < 0).slice(0, 1);
       const cls = { otimo: 'ok', bom: 'accent', possivel: '', pouco: 'sobre' }[c.apt.nivel];
       return `<a class="item rec-cafe" href="#/nova?grao=${c.g.id}&metodo=${m.id}&via=metodo">
-        <div class="ico">${BEAN}</div>
+        ${icoGrao(c.g)}
         <div><div class="t">${esc(c.g.nome)} <span class="badge ${c.semEstoque ? '' : cls}">${c.semEstoque ? 'sem estoque' : esc(c.apt.rotulo)}</span></div>
           <div class="s">${esc((DB.regiao[c.g.regiao] || {}).nome || '')} · ${esc(((DB.processo[c.g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[c.g.torra] || {}).nome || '').toLowerCase())}</div>
           ${pos.length || neg.length ? `<ul class="motivos">${pos.map((x) => `<li class="pos">${esc(x.t)}</li>`).join('')}${neg.map((x) => `<li class="neg">${esc(x.t)}</li>`).join('')}</ul>` : ''}
@@ -984,7 +1019,7 @@
       ${r.q.estoque ? `<small class="muted">Ordenado pelo que está acabando. O estoque desconta a dose de cada extração registrada. ${estoqueResumo().gramas} g no total.</small>` : ''}
       <div class="list" style="margin-top:12px">${gs.length ? gs.map((g) => {
         const n = state.extracoes.filter((x) => x.graoId === g.id).length;
-        return `<div class="item" onclick="location.hash='#/grao/${g.id}'"><div class="ico">${BEAN}</div>
+        return `<div class="item" onclick="location.hash='#/grao/${g.id}'">${icoGrao(g)}
           <div><div class="t">${esc(g.nome)} ${g.arquivado ? '<span class="badge">arquivado</span>' : ''} ${badgeEstoque(g)}</div><div class="s">${esc((DB.regiao[g.regiao] || {}).nome || '')} · ${esc(((DB.processo[g.processo] || {}).nome || '').split(' (')[0])} · torra ${esc(((DB.torra[g.torra] || {}).nome || '').toLowerCase())}${g.dataTorra ? ' · torrado em ' + fmtDia(g.dataTorra) : ''}</div>${g.torrefacao ? `<div class="s">${esc(g.torrefacao)}${g.kit ? ' · ' + esc(g.kit) : ''}</div>` : ''}</div>
           <div class="right"><div class="score">${n}</div><small>extr.</small></div></div>`;
       }).join('') : '<div class="empty"><div class="big">${BEAN}</div>Nenhum grão cadastrado.</div>'}</div>`;
@@ -1003,6 +1038,14 @@
         <div id="scanStatus"></div>
       </div>
       <form id="fGrao">
+        <div class="foto-cafe">
+          <div class="ft" id="ftPrev">${fotoOk(g.foto) ? `<img src="${g.foto}" alt="">` : BEAN}</div>
+          <div><span class="lbl" style="margin:0 0 6px">Foto do café</span><div class="acoes">
+            <label class="btn sm">📷 Tirar foto<input type="file" id="ftCam" accept="image/*" capture="environment" hidden></label>
+            <label class="btn sm ghost">🖼 Galeria<input type="file" id="ftGal" accept="image/*" hidden></label>
+            <button type="button" class="btn sm ghost" id="ftDel" ${fotoOk(g.foto) ? '' : 'hidden'}>Remover</button>
+          </div><div class="help" style="margin-top:4px">A foto do rótulo lida pela IA/OCR também fica salva aqui.</div></div>
+        </div>
         <div class="form-grid">
           <label class="field full"><span class="lbl">Nome / lote *</span><input type="text" name="nome" value="${esc(g.nome || '')}" required placeholder="Ex.: Fazenda Santa Inês — Bourbon Amarelo"></label>
           <label class="field"><span class="lbl">Produtor / fazenda</span><input type="text" name="produtor" value="${esc(g.produtor || '')}"></label>
@@ -1047,9 +1090,21 @@
       });
       perfil();
       if (isNew) { const reg = DB.regiao[g.regiao]; $$('[data-chips="notas"] .chip', sheet).forEach((c) => c.classList.toggle('on', reg.notas.includes(c.dataset.v))); ['acidez', 'corpo', 'docura'].forEach((k) => { F(k).value = reg[k]; F(k).nextElementSibling.value = reg[k]; }); }
+      let foto = fotoOk(g.foto) ? g.foto : null;
+      const pintarFoto = () => { $('#ftPrev', sheet).innerHTML = foto ? `<img src="${foto}" alt="">` : BEAN; $('#ftDel', sheet).hidden = !foto; };
+      const pegarFoto = async (e) => {
+        const file = e.target.files && e.target.files[0]; e.target.value = '';
+        if (!file) return;
+        try { foto = await fotoDeArquivo(file); pintarFoto(); } catch (err) { toast(err.message); }
+      };
+      $('#ftCam', sheet).addEventListener('change', pegarFoto);
+      $('#ftGal', sheet).addEventListener('change', pegarFoto);
+      $('#ftDel', sheet).onclick = () => { foto = null; pintarFoto(); };
       const onScan = async (e) => {
         const file = e.target.files && e.target.files[0]; e.target.value = '';
         if (!file || !window.CafeRotulo) return;
+        // a foto enviada para leitura vira a foto do café (se ainda não houver uma)
+        if (!foto) fotoDeArquivo(file).then((d) => { foto = d; pintarFoto(); }).catch(() => {});
         const st = $('#scanStatus', sheet);
         st.innerHTML = `<div class="scan-status"><span class="spin"></span> <span id="scanMsg">Preparando imagem…</span></div>`;
         try {
@@ -1081,7 +1136,8 @@
       f.addEventListener('submit', (e) => {
         e.preventDefault();
         const o = { ...g, id: g.id || uid(), nome: F('nome').value.trim(), produtor: F('produtor').value.trim(), torrefacao: F('torrefacao').value.trim(), regiao: F('regiao').value, variedade: F('variedade').value.trim(), processo: F('processo').value, torra: F('torra').value, especie: F('especie').value, dataTorra: F('dataTorra').value, altitude: F('altitude').value ? +F('altitude').value : null, dosePadrao: F('dosePadrao').value ? +F('dosePadrao').value : null, acidez: +F('acidez').value, corpo: +F('corpo').value, docura: +F('docura').value, notas: chipsVal(sheet, 'notas'), obs: F('obs').value.trim(), pesoPacote: F('pesoPacote').value ? +F('pesoPacote').value : null, usadoAntes: F('usadoAntes').value ? +F('usadoAntes').value : 0, pontuacao: F('pontuacao').value.trim(), kit: F('kit').value.trim(), link: F('link').value.trim(), criadoEm: g.criadoEm || new Date().toISOString() };
-        if (isNew) state.graos.push(o); else Object.assign(g, o);
+        if (foto) o.foto = foto; else delete o.foto;
+        if (isNew) state.graos.push(o); else { Object.assign(g, o); if (!foto) delete g.foto; }
         save(); closeModal(); toast(isNew ? 'Grão cadastrado' : 'Grão atualizado');
         if (isNew) go(`#/grao/${o.id}`); else render();
       });
@@ -1102,6 +1158,7 @@
     const sugeridos = reg.metodos.map((id) => metodo(id));
     view.innerHTML = `
       <div class="card">
+        ${fotoOk(g.foto) ? `<img class="grao-foto" id="gFoto" src="${g.foto}" alt="Foto de ${esc(g.nome)}">` : ''}
         <div class="row between"><div><h2>${esc(g.nome)}</h2><small>${esc(g.produtor || '')}${g.produtor && g.torrefacao ? ' · ' : ''}${esc(g.torrefacao || '')}</small></div><button class="btn sm" id="edit">Editar</button></div>
         <div class="chips" style="margin-top:8px">
           <span class="chip static">📍 ${esc(reg.nome)}</span><span class="chip static">${esc(proc ? proc.nome.split(' (')[0] : '')}</span><span class="chip static">🔥 ${esc(tor ? tor.nome : '')}</span>
@@ -1144,6 +1201,7 @@
       ${state.moedores.length ? `<small class="muted">Cliques calculados para ${esc(state.moedores[0].nome)}.</small>` : '<small class="muted">Cadastre um moedor para ver cliques.</small>'}
       <div class="row" style="margin-top:16px"><button class="btn sm" id="arq">${g.arquivado ? 'Reativar grão' : 'Arquivar grão'}</button></div>`;
     $('#edit').onclick = () => formGrao(g);
+    if ($('#gFoto')) $('#gFoto').onclick = () => verFoto(g.foto);
     $('#arq').onclick = () => { g.arquivado = !g.arquivado; save(); render(); };
   };
 

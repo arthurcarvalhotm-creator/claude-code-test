@@ -239,23 +239,23 @@ window.Engine = (function () {
       const tor = E.torra.nome.toLowerCase();
       if (acExc >= 1) {
         const v = 0.35 * acExc + (doDef >= 1 ? 0.25 * doDef : 0);
-        sub += v; fatores.push({ t: `Acidez ${P.acidez} acima do esperado para este grão (${fmtN(E.acidez)})${doDef >= 1 ? ` e doçura ${P.docura} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: -r2(v) });
+        sub += v; fatores.push({ t: `Acidez ${fmtN(P.acidez)} acima do esperado para este grão (${fmtN(E.acidez)})${doDef >= 1 ? ` e doçura ${fmtN(P.docura)} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: -r2(v) });
       }
       if (amExc >= 1) {
         const v = 0.35 * amExc + (doDef >= 1 && acExc < 1 ? 0.25 * doDef : 0);
-        sobre += v; fatores.push({ t: `Amargor ${P.amargor} acima do esperado para torra ${tor} (${fmtN(E.amargor)})${doDef >= 1 && acExc < 1 ? ` e doçura ${P.docura} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: r2(v) });
+        sobre += v; fatores.push({ t: `Amargor ${fmtN(P.amargor)} acima do esperado para torra ${tor} (${fmtN(E.amargor)})${doDef >= 1 && acExc < 1 ? ` e doçura ${fmtN(P.docura)} abaixo do alvo (${fmtN(E.docura)})` : ''}`, v: r2(v) });
       }
       if (doDef >= 1 && acExc < 1 && amExc < 1) {
-        if (co <= -1) { forca -= 0.35; fatores.push({ t: `Doçura ${P.docura} e corpo ${P.corpo} abaixo do esperado: xícara diluída`, v: 0, forca: -0.35 }); }
-        else { const v = 0.2 * doDef; sub += v; fatores.push({ t: `Doçura ${P.docura} abaixo do que o grão entrega (${fmtN(E.docura)}), sem acidez nem amargor em excesso`, v: -r2(v) }); }
+        if (co <= -1) { forca -= 0.35; fatores.push({ t: `Doçura ${fmtN(P.docura)} e corpo ${fmtN(P.corpo)} abaixo do esperado: xícara diluída`, v: 0, forca: -0.35 }); }
+        else { const v = 0.2 * doDef; sub += v; fatores.push({ t: `Doçura ${fmtN(P.docura)} abaixo do que o grão entrega (${fmtN(E.docura)}), sem acidez nem amargor em excesso`, v: -r2(v) }); }
       }
       if (fiDef >= 1.5) {
-        if (amExc >= 1) { sobre += 0.15; fatores.push({ t: `Finalização ${P.final}: final áspero junto com o amargor`, v: 0.15 }); }
-        else if (acExc >= 1 || doDef >= 1) { sub += 0.15; fatores.push({ t: `Finalização ${P.final}: final curto, a doçura não se sustenta`, v: -0.15 }); }
+        if (amExc >= 1) { sobre += 0.15; fatores.push({ t: `Finalização ${fmtN(P.final)}: final áspero junto com o amargor`, v: 0.15 }); }
+        else if (acExc >= 1 || doDef >= 1) { sub += 0.15; fatores.push({ t: `Finalização ${fmtN(P.final)}: final curto, a doçura não se sustenta`, v: -0.15 }); }
       }
-      if (acDef >= 1.5 && amExc >= 1) { sobre += 0.2; fatores.push({ t: `Acidez ${P.acidez} apagada pelo amargor (esperado ${fmtN(E.acidez)})`, v: 0.2 }); }
-      if (co <= -1.5 && doDef < 1) { forca -= 0.4; fatores.push({ t: `Corpo ${P.corpo} abaixo do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: -0.4 }); }
-      else if (co >= 1.5) { forca += 0.4; fatores.push({ t: `Corpo ${P.corpo} acima do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: 0.4 }); }
+      if (acDef >= 1.5 && amExc >= 1) { sobre += 0.2; fatores.push({ t: `Acidez ${fmtN(P.acidez)} apagada pelo amargor (esperado ${fmtN(E.acidez)})`, v: 0.2 }); }
+      if (co <= -1.5 && doDef < 1) { forca -= 0.4; fatores.push({ t: `Corpo ${fmtN(P.corpo)} abaixo do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: -0.4 }); }
+      else if (co >= 1.5) { forca += 0.4; fatores.push({ t: `Corpo ${fmtN(P.corpo)} acima do esperado (${fmtN(E.corpo)}) para este grão no método`, v: 0, forca: 0.4 }); }
       leitura.notasIntrusas.forEach((fam) => {
         if (fam === 'cru') { sub += 0.3; fatores.push({ t: 'Notas de cereal/vegetal: típico de sub-extração', v: -0.3 }); }
         if (fam === 'tostado') { sobre += 0.3; fatores.push({ t: `Notas tostadas/amadeiradas num café de torra ${tor}: água quente demais ou extração longa`, v: 0.3 }); }
@@ -540,7 +540,7 @@ window.Engine = (function () {
       const explicita = (brew.sinais || []).some((s) => s === 'fraco' || s === 'forte');
       const tipoA = explicita || sev < 0.5 ? tipoLivre() : 'alternativa';
       const fraco = diag.forca < 0;
-      const corpoTxt = L ? `Corpo ${L.percebido.corpo} ${fraco ? 'abaixo' : 'acima'} do esperado (${fmtN(L.esperado.corpo)}) para este grão no método ${method.nome.split(' (')[0]}` : (fraco ? 'Xícara fraca/diluída' : 'Xícara intensa demais');
+      const corpoTxt = L ? `Corpo ${fmtN(L.percebido.corpo)} ${fraco ? 'abaixo' : 'acima'} do esperado (${fmtN(L.esperado.corpo)}) para este grão no método ${method.nome.split(' (')[0]}` : (fraco ? 'Xícara fraca/diluída' : 'Xícara intensa demais');
       if (tipo === 'moka') tecnica(fraco ? 'Encha o funil até a borda, nivelado e sem compactar' : 'Dilua na xícara com um pouco de água quente', `${corpoTxt}. Na moka a razão é fixada pelo funil.`);
       else {
         const forte = Math.abs(diag.forca) >= 0.6;
@@ -557,10 +557,10 @@ window.Engine = (function () {
       const brilhante = E.acidez >= 3.5 || E.familias.includes('fruta') || E.familias.includes('floral');
       const faltaFruta = L.notasFaltando.some((f) => f === 'fruta' || f === 'floral');
       const cands = [];
-      if (doDef >= 1 && acExc < 1 && amExc < 1) cands.push({ peso: doDef, f: (tA) => maisExtracaoSuave(tA, `Doçura ${P.docura} abaixo do que ${perfilGrao} costuma entregar (${fmtN(E.docura)}), sem acidez nem amargor sobrando: dá para extrair mais açúcares antes do amargor aparecer.`) });
-      if (acExc >= 1 && doDef < 1) cands.push({ peso: acExc * 0.9, f: (tA) => razao(tipo === 'espresso' ? -0.2 : -0.5, tA, `Acidez ${P.acidez} mais viva que o perfil de ${perfilGrao} (${fmtN(E.acidez)}), com boa doçura: um pouco mais de corpo arredonda a acidez.`) });
+      if (doDef >= 1 && acExc < 1 && amExc < 1) cands.push({ peso: doDef, f: (tA) => maisExtracaoSuave(tA, `Doçura ${fmtN(P.docura)} abaixo do que ${perfilGrao} costuma entregar (${fmtN(E.docura)}), sem acidez nem amargor sobrando: dá para extrair mais açúcares antes do amargor aparecer.`) });
+      if (acExc >= 1 && doDef < 1) cands.push({ peso: acExc * 0.9, f: (tA) => razao(tipo === 'espresso' ? -0.2 : -0.5, tA, `Acidez ${fmtN(P.acidez)} mais viva que o perfil de ${perfilGrao} (${fmtN(E.acidez)}), com boa doçura: um pouco mais de corpo arredonda a acidez.`) });
       if (brilhante && amExc < 1 && (acDef >= 1.5 || (acDef >= 1 && faltaFruta))) cands.push({ peso: acDef, f: (tA) => {
-        const ok = razao(tipo === 'espresso' ? 0.3 : 0.5, tA, `Acidez ${P.acidez} abaixo do potencial de ${perfilGrao} (${fmtN(E.acidez)}${E.notas.length ? '; notas esperadas: ' + E.notas.slice(0, 3).join(', ') : ''}): uma xícara um pouco mais diluída e limpa abre a acidez e a fruta.`);
+        const ok = razao(tipo === 'espresso' ? 0.3 : 0.5, tA, `Acidez ${fmtN(P.acidez)} abaixo do potencial de ${perfilGrao} (${fmtN(E.acidez)}${E.notas.length ? '; notas esperadas: ' + E.notas.slice(0, 3).join(', ') : ''}): uma xícara um pouco mais diluída e limpa abre a acidez e a fruta.`);
         if (ok && tipo === 'filtro') moer(false, 1, 'alternativa', 'Outra forma de ganhar clareza: moagem 1 ajuste mais grossa com 1 °C a mais mantém a extração e reduz o corpo que mascara a acidez.');
         return ok;
       } });
@@ -568,7 +568,7 @@ window.Engine = (function () {
         const esperadas = E.notas.filter((n) => ['doce', 'chocolate'].includes(familia(n))).slice(0, 2).join(' e ') || 'caramelo/chocolate';
         cands.push({ peso: 1, f: (tA) => maisExtracaoSuave(tA, `Você sentiu fruta ácida, mas não o ${esperadas} esperado deste grão: esses sabores saem mais tarde na extração.`) });
       }
-      if (Math.abs(d.corpo) >= 1 && Math.abs(diag.forca) < 0.3) cands.push({ peso: Math.abs(d.corpo) * 0.8, f: (tA) => razao((d.corpo < 0 ? -1 : 1) * (tipo === 'espresso' ? 0.2 : 0.5), tA, `Corpo ${P.corpo} ${d.corpo < 0 ? 'abaixo' : 'acima'} do esperado (${fmtN(E.corpo)}) para este grão no método ${method.nome.split(' (')[0]}.`) });
+      if (Math.abs(d.corpo) >= 1 && Math.abs(diag.forca) < 0.3) cands.push({ peso: Math.abs(d.corpo) * 0.8, f: (tA) => razao((d.corpo < 0 ? -1 : 1) * (tipo === 'espresso' ? 0.2 : 0.5), tA, `Corpo ${fmtN(P.corpo)} ${d.corpo < 0 ? 'abaixo' : 'acima'} do esperado (${fmtN(E.corpo)}) para este grão no método ${method.nome.split(' (')[0]}.`) });
       cands.sort((a, b) => b.peso - a.peso);
       let n = 0;
       for (const c of cands) { if (n >= 2) break; if (c.f(tipoLivre())) n++; }

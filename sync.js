@@ -102,7 +102,7 @@
   function intocado(col, r) {
     if (col === 'graos' && r.catalogoId) {
       const c = DB.catalogo.find((x) => x.catalogoId === r.catalogoId); if (!c) return false;
-      return Object.keys(c).every((k) => estavel(c[k]) === estavel(r[k])) && !r.dataTorra;
+      return Object.keys(c).every((k) => estavel(c[k]) === estavel(r[k])) && !r.dataTorra && !r.foto;
     }
     if (col === 'moedores' && r.modeloId) {
       const m = DB.moedoresModelo.find((x) => x.id === r.modeloId); if (!m) return false;
